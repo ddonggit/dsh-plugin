@@ -176,7 +176,9 @@ Environment=DSH_RESTART_UNIT=my-dsh.service
 ## 自测
 
 ```bash
-node test/selftest.mjs
+npm test          # 等价于 node test/selftest.mjs
+npm run check     # 只做语法检查
+npm run verify    # check + test
 ```
 
 不碰真实服务：用假 `systemctl`、假 `dsh web`、临时端口跑纯逻辑、宿主路由、systemd 端到端、

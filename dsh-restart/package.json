@@ -6,6 +6,11 @@
   "description": "dsh web 受控重启：自动识别 systemd/裸跑、独立执行器、阶段化进度、失败现场与运行状态",
   "main": "lib/index.js",
   "license": "MIT",
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/environment.mjs && node --check lib/probe.mjs && node --check lib/proc.mjs && node --check lib/restart-runner.mjs && node --check lib/state.mjs && node --check lib/store.mjs",
+    "test": "node test/selftest.mjs",
+    "verify": "npm run check && npm test"
+  },
   "files": [
     "lib/**",
     "locale/*.json",
