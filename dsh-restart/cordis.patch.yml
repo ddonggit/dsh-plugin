@@ -1,0 +1,6 @@
+# entry id == package.json name == lib/client.js load().id
+# 三处必须完全一致，否则页面白屏。
+- insert:
+    - id: dsh-restart
+      name: dsh-restart
+      config: {}

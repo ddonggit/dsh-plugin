@@ -1,0 +1,41 @@
+# dsh-mobile bundle patch: inserts this plugin into a profile's layer stack.
+#
+# Host-side notification defaults live here; secrets and deployment specifics go
+# to `$DSH_HOME/dsh-mobile/settings.json` (0600, hot-reloaded) so the profile
+# patch never has to be edited by hand.
+- insert:
+    - id: dsh-mobile
+      name: 'dsh-mobile'
+      config:
+        notify:
+          # Master switch for host-side delivery. The browser half is independent.
+          enabled: true
+          # Public origin used to build the session link in every message,
+          # e.g. https://dsh.example.com:3088 . Empty = messages carry no link.
+          baseUrl: ''
+          # done = turn completed, error = turn failed, ask = waiting for you.
+          events: [done, error, ask]
+          # Settle time before a completion is announced; a follow-up turn inside
+          # this window cancels the message.
+          debounceMs: 1500
+          maxPerMinute: 20
+          minSessionIntervalMs: 10000
+          askRepeatMs: 60000
+          # A pending approval or question keeps `running` true forever, so the
+          # only way to notice a stall is this timer. Off by default: enabling it
+          # lets the plugin decide in your place.
+          askAutoAnswer: false
+          # Wait before deciding, 15s .. 24h.
+          askTimeoutMs: 120000
+          # allowed-once matches the approval panel's Enter key; rejected is safer.
+          approvalAutoAction: allowed-once
+          # first = the first option, which is also what a plan review approves.
+          questionAutoPick: first
+          channels:
+            feishu: { enabled: false, webhook: '' }
+            wecom: { enabled: false, webhook: '' }
+            dingtalk: { enabled: false, webhook: '' }
+            telegram: { enabled: false, botToken: '', chatId: '' }
+            ntfy: { enabled: false, server: 'https://ntfy.sh', topic: '', token: '' }
+            serverchan: { enabled: false, sendKey: '' }
+            webhook: { enabled: false, url: '', headers: {} }

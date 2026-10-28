@@ -1,0 +1,41 @@
+{
+  "name": "dsh-mobile",
+  "version": "0.5.6",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "description": "DSH Web 移动端适配 + 任务完成/等待确认通知：浏览器通知（需 HTTPS）与宿主端多通道推送（飞书/钉钉/企业微信/Telegram/ntfy/Server酱/Webhook），点击直达会话。",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "scripts": {
+    "check": "timeout 60 node test/client-harness.mjs",
+    "test": "timeout 300 node --test --test-timeout=300000 test/*.test.mjs",
+    "verify": "npm run check && npm test"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "client.*.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

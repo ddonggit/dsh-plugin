@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH Mobile",
+    "description": "Mobile layout for the Web GUI (drawer sidebar, fullscreen panels, safe areas, touch targets) with completion and pending-interaction notifications, delivered either in the browser or from the host to chat channels."
+  }
+}

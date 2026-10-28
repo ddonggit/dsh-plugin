@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.pi/
+.DS_Store
+
+# 真实环境截图含个人会话标题，不入库；只保留可重放的 HTML 原型
+dsh-running-sessions/design/*.png

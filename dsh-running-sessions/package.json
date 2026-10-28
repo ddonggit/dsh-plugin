@@ -1,0 +1,33 @@
+{
+  "name": "dsh-running-sessions",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "跨工作区汇总正在运行 / 等待你处理 / 刚完成的会话，一个入口直达。",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "files": [
+    "lib/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  }
+}

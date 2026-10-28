@@ -1,0 +1,48 @@
+{
+  "name": "dsh-usage-query",
+  "version": "0.3.1",
+  "type": "module",
+  "description": "设置页「用量查询」：DeepSeek 余额、OpenCode Go 配额与 OpenDesign 余额/积分/用量明细",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "files": [
+    "lib/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check lib/index.js && node --check lib/api.js && node --check lib/store.js && node --check lib/providers.js && node --check lib/client.js"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-bundle",
+    "usage",
+    "balance",
+    "deepseek",
+    "opencode",
+    "opendesign"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  }
+}

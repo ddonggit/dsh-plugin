@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Restart & Status",
+    "description": "Controlled restart of dsh web with staged progress, failure context and runtime status"
+  }
+}

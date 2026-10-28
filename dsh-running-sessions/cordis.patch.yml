@@ -1,0 +1,8 @@
+# entry id == package.json name == client.js load().id
+# 三处必须完全一致，否则页面白屏。
+- insert:
+    - id: dsh-running-sessions
+      name: dsh-running-sessions
+      config:
+        # 非运行会话（刚完成 / 未读）在列表里保留多久，单位分钟。
+        activeWindowMinutes: 30

@@ -1,0 +1,17 @@
+- insert:
+    - id: dsh-https
+      name: dsh-https
+      config:
+        listen:
+          host: '0.0.0.0'
+          port: 3088
+        upstream:
+          host: '127.0.0.1'
+          protocol: 'http'
+        publicCert:
+          mode: 'local'
+        localCa:
+          enabled: true
+        acme:
+          enabled: false
+          agreeTos: false

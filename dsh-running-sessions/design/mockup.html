@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>运行中会话 · B+A 视觉稿</title>
+<style>
+  :root{
+    --bg-base:#fff; --bg-layer-1:#fff; --bg-layer-2:#f9fafb; --bg-layer-3:#ebeef2;
+    --label-primary:#0f1115; --label-secondary:#61666b; --label-tertiary:#81858c;
+    --border-l1:#0000000d; --border-l2:#0000001a; --border-l3:#00000026;
+    --brand:#0f1115; --brand-fg:#fff; --ok:#22c55e; --warn:#f59e0b;
+    --hover:#2631480f; --mask:#0000003d;
+    --shadow:0 10px 30px #0f11151a, 0 2px 6px #0f11150f;
+    --shadow-sm:0 1px 2px #0f111514, 0 4px 14px #0f111510;
+  }
+  .dark{
+    --bg-base:#121316; --bg-layer-1:#1a1b1e; --bg-layer-2:#1f2023; --bg-layer-3:#2a2c30;
+    --label-primary:#f9fafb; --label-secondary:#cfd3d6; --label-tertiary:#adb2b8;
+    --border-l1:#ffffff0f; --border-l2:#ffffff1f; --border-l3:#ffffff33;
+    --brand:#f9fafb; --brand-fg:#0f1115; --hover:#ffffff12; --mask:#00000080;
+    --shadow:0 12px 34px #00000080, 0 2px 8px #0000004d;
+    --shadow-sm:0 1px 2px #00000059, 0 4px 16px #00000040;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eceef1;padding:26px 30px 40px;color:#0f1115;font-size:13px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Droid Sans Fallback",sans-serif;line-height:1.45}
+  h1{font-size:15px;margin:0 0 5px}
+  h2{font-size:11px;font-weight:700;color:#81858c;letter-spacing:.1em;text-transform:uppercase;margin:30px 0 12px}
+  .note{font-size:12px;color:#81858c;margin:0 0 6px;max-width:1000px}
+  .grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .wall{columns:3;column-width:390px;column-gap:24px}
+  .wall .card{max-width:390px;width:100%;break-inside:avoid;display:inline-block;margin:0 0 20px}
+  .card{max-width:410px}
+  .cap{font-size:11px;color:#61666b;margin:7px 0 0;line-height:1.55}
+  .cap b{color:#0f1115;font-weight:650}
+  .frame{border-radius:12px;position:relative;overflow:hidden;background:var(--bg-layer-2);color:var(--label-primary);box-shadow:var(--shadow)}
+  .glyph{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+  .row{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border-radius:8px}
+  .row:hover{background:var(--hover)}
+  .row .t{font-size:12.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--label-primary)}
+  .row .ws{font-size:11px;color:var(--label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .row .meta{margin-left:auto;font-size:10.5px;color:var(--label-tertiary);flex:none;padding-top:2px;font-variant-numeric:tabular-nums}
+  .row-main{min-width:0;flex:1}
+  .tag{font-size:10px;padding:1.5px 6px;border-radius:5px;font-weight:650;white-space:nowrap;flex:none;margin-top:1px}
+  .tag.wait{background:#fff1dc;color:#8d5200}
+  .dark .tag.wait{background:#3a2b12;color:#f8c56a}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none;margin-top:5px}
+  .spin{width:15px;height:15px;flex:none;margin-top:1px}
+  .spin .trk{fill:none;stroke:currentColor;stroke-width:2;opacity:.2}
+  .spin .arc{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-dasharray:13 42;transform-origin:center;animation:spin 1.5s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .pill{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px 0 11px;border-radius:17px;
+    background:var(--bg-layer-1);border:1px solid var(--border-l2);box-shadow:var(--shadow-sm);
+    font-size:12px;font-weight:650;color:var(--label-primary)}
+  .pill .sep{width:1px;height:13px;background:var(--border-l2)}
+  .pill .wait{display:inline-flex;align-items:center;gap:5px;color:#a86300;font-weight:700}
+  .dark .pill .wait{color:#f8c56a}
+  .pill.ghost{border-style:dashed;background:transparent;box-shadow:none;color:var(--label-tertiary);font-weight:500}
+  .wavebox{width:20px;height:14px;position:relative;display:inline-block}
+  .wavebox svg{position:absolute;inset:0}
+  .wavebox .trail{opacity:.25}
+  .wavebox .live{stroke-dasharray:7 30;animation:flow 1.5s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-37}}
+
+  .phone{width:390px;height:470px;border-radius:12px;overflow:hidden;position:relative;background:var(--bg-layer-2);box-shadow:var(--shadow);color:var(--label-primary)}
+  .top{height:42px;display:flex;align-items:center;padding:0 14px;font-size:12px;color:var(--label-secondary);border-bottom:1px solid var(--border-l1);background:var(--bg-layer-1)}
+  .pbody{padding:14px;display:flex;flex-direction:column;gap:9px}
+  .bub{height:9px;border-radius:5px;background:var(--bg-layer-3)}
+  .scrim{position:absolute;inset:0;background:var(--mask)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg-layer-1);border-radius:16px 16px 0 0;
+    box-shadow:var(--shadow);padding:7px 0 9px;border-top:1px solid var(--border-l2);color:var(--label-primary)}
+  .grab{width:34px;height:4px;border-radius:2px;background:var(--border-l3);margin:2px auto 7px}
+  .shead{display:flex;align-items:center;gap:8px;padding:1px 14px 7px}
+  .shead .h{font-size:13px;font-weight:700}
+  .shead .n{font-size:11px;color:var(--label-tertiary);font-variant-numeric:tabular-nums}
+  .shead .x{margin-left:auto;width:22px;height:22px;border-radius:11px;display:grid;place-items:center;color:var(--label-tertiary);font-size:13px}
+  .chips{display:flex;gap:6px;padding:0 14px 7px}
+  .chip{font-size:11px;padding:4px 9px;border-radius:11px;border:1px solid var(--border-l2);color:var(--label-secondary);white-space:nowrap}
+  .chip .c{font-variant-numeric:tabular-nums;color:var(--label-tertiary);margin-left:3px}
+  .chip.on{background:var(--brand);color:var(--brand-fg);border-color:transparent}
+  .chip.on .c{color:inherit;opacity:.65}
+  .list{padding:0 6px}
+  .foot{display:flex;align-items:center;gap:6px;padding:7px 14px 1px;border-top:1px solid var(--border-l1);margin-top:5px;font-size:10.5px;color:var(--label-tertiary)}
+
+  .app{display:flex;width:706px;height:404px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);background:var(--bg-base);color:var(--label-primary)}
+  .side{width:212px;border-right:1px solid var(--border-l1);background:var(--bg-layer-2);display:flex;flex-direction:column;padding:9px 8px}
+  .brand{display:flex;align-items:center;gap:8px;padding:5px 8px 11px;font-size:12.5px;font-weight:650}
+  .mark{width:22px;height:22px;border-radius:6px;background:var(--brand);color:var(--brand-fg);display:grid;place-items:center;font-size:11px;font-weight:700}
+  .navrow{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;color:var(--label-secondary);font-size:12.5px}
+  .navrow.active{background:var(--hover);color:var(--label-primary);font-weight:650}
+  .navrow svg{width:18px;height:18px;flex:none}
+  .cb{margin-left:auto}
+  .badge{min-width:17px;height:17px;padding:0 4px;border-radius:9px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;background:var(--brand);color:var(--brand-fg);font-variant-numeric:tabular-nums}
+  .badge.warn{background:var(--warn);color:#241800}
+  .divider{height:1px;background:var(--border-l1);margin:7px 4px}
+  .wshead{display:flex;align-items:center;justify-content:space-between;padding:3px 8px 5px;font-size:10.5px;font-weight:700;color:var(--label-tertiary);letter-spacing:.05em}
+  .wsgrp{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px;color:var(--label-secondary)}
+  .main{flex:1;display:flex;flex-direction:column;background:var(--bg-base);min-width:0}
+  .mhead{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--border-l1)}
+  .mhead .h{font-size:13.5px;font-weight:700}
+  .mhead .n{font-size:11px;color:var(--label-tertiary)}
+  .mhead .right{margin-left:auto;display:flex;gap:5px;align-items:center}
+  .sec{padding:8px 6px 1px}
+  .sec .g{display:flex;align-items:center;gap:7px;padding:1px 8px 3px;font-size:10px;font-weight:700;color:var(--label-tertiary);letter-spacing:.07em}
+  .sec .g .line{flex:1;height:1px;background:var(--border-l1)}
+
+  .irow{display:flex;align-items:center;gap:20px;padding:9px 0;border-bottom:1px solid #dfe3e8}
+  .isz{display:flex;align-items:flex-end;gap:13px;color:#61666b;flex:0 0 116px}
+  .idk{background:#1a1b1e;color:#f9fafb;border-radius:8px;padding:5px 11px;display:flex;gap:11px;align-items:center;flex:0 0 92px}
+  .inm{font-size:11.5px;font-weight:650;flex:0 0 118px}
+  .ids{font-size:10.5px;color:#81858c;flex:1;line-height:1.45}
+  .isheet{background:#fff;border-radius:12px;padding:6px 18px 14px;box-shadow:var(--shadow);max-width:960px}
+</style></head><body>
+
+<h1>“进行中的会话”插件 · B + A 视觉稿</h1>
+<p class="note">静态示意；颜色全部取自 DSH 现有 token（<code>--dsw-alias-*</code>），尺寸按现有控件比例。上方 B 悬浮层 4 个状态，中间 A 侧栏面板，底部图标候选（含 18px 实尺寸）。</p>
+
+<h2>B · 悬浮层（shell.overlay）</h2>
+<div class="wall">
+
+  <div class="card">
+    <div class="frame dark" style="width:390px;height:150px">
+      <div style="padding:16px 16px 0">
+        <div style="height:9px;border-radius:5px;background:var(--bg-layer-3);width:72%"></div>
+        <div style="height:9px;border-radius:5px;background:var(--bg-layer-3);width:46%;margin-top:8px"></div>
+      </div>
+      <div style="position:absolute;right:14px;bottom:14px">
+        <div class="pill">
+          <span class="wavebox"><svg class="glyph trail" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg><svg class="glyph live" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg></span>
+          <span style="font-variant-numeric:tabular-nums">3 运行中</span>
+          <span class="sep"></span>
+          <span class="wait"><span class="dot" style="background:var(--warn);margin-top:0"></span>1 待确认</span>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>B1 收起态（默认，深色）</b><br>右下角胶囊，34px 高、圆角 17px。左侧是<b>流动的波形</b>（细线在描，不是常驻 spinner，省电也不吵）；数字为运行中会话数；“1 待确认”只在真有人等你确认时出现，用琥珀色。</p>
+  </div>
+
+  <div class="card">
+    <div class="frame" style="width:390px;padding:18px 16px 14px;display:flex;flex-direction:column;align-items:flex-end;gap:12px">
+      <div style="align-self:flex-start;font-size:10.5px;color:var(--label-tertiary)">浅色 · 正常运行</div>
+      <div class="pill">
+        <span class="wavebox" style="color:#0f1115"><svg class="glyph trail" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg><svg class="glyph live" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg></span>
+        <span style="font-variant-numeric:tabular-nums">2 运行中</span>
+      </div>
+      <div style="align-self:flex-start;font-size:10.5px;color:var(--label-tertiary);margin-top:4px">全部空闲 → 虚线态，3 秒后降到 60% 透明</div>
+      <div class="pill ghost">
+        <svg class="glyph" width="15" height="15" viewBox="0 0 24 24" style="opacity:.5"><path d="M1.8 12h4l2.3-6.6 4 13 2.2-6.4H22"/></svg>
+        无进行中
+      </div>
+    </div>
+    <p class="cap"><b>B2 浅色 + 空闲态</b><br>浅色下波形用 <code>label-primary</code>，不另造颜色。空闲时<b>不要归零消失</b>，改成虚线“无进行中”并降到 60% 透明，点开仍能看到“最近运行过”的会话，避免“想找却找不到入口”。</p>
+  </div>
+
+  <div class="card">
+    <div class="phone">
+      <div class="top">DSH · 会话</div>
+      <div class="pbody"><div class="bub" style="width:80%"></div><div class="bub" style="width:62%"></div>
+        <div class="bub" style="width:74%;height:70px;border-radius:9px"></div><div class="bub" style="width:54%"></div></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="h">进行中</span><span class="n">4</span><span class="x">✕</span></div>
+        <div class="chips">
+          <span class="chip on">全部<span class="c">4</span></span>
+          <span class="chip">待我处理<span class="c">1</span></span>
+          <span class="chip">运行中<span class="c">2</span></span>
+          <span class="chip">刚完成<span class="c">1</span></span>
+        </div>
+        <div class="list">
+          <div class="row"><span class="tag wait">待确认</span>
+            <div class="row-main"><div class="t">重构 runner 的八条执行臂</div><div class="ws">pi-agent-web · 等你确认 2 条命令</div></div>
+            <div class="meta">刚刚</div></div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">批量校对 12 篇 README</div><div class="ws">dsh-0.2.1-rc.2 · 正在执行</div></div>
+            <div class="meta">3 分钟</div></div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">跑 3 组基准测试</div><div class="ws">example-project · 正在执行</div></div>
+            <div class="meta">8 分钟</div></div>
+          <div class="row"><span class="dot" style="background:var(--ok)"></span>
+            <div class="row-main"><div class="t" style="color:var(--label-secondary)">翻译 manifest 文档</div><div class="ws">dshmarket · 已完成，未查看</div></div>
+            <div class="meta">12 分钟</div></div>
+        </div>
+        <div class="foot">只列出 30 分钟内有动静的非运行会话 · 窗口可调</div>
+      </div>
+    </div>
+    <p class="cap"><b>B3 展开态 · 移动端</b><br>底部抽屉，最高 60vh，抓手下拉即关。手机上一眼看到：<b>哪个在等我 → 哪个在跑 → 哪个刚跑完</b>。点任一行直接 <code>openSession</code>，不经过工作区。</p>
+  </div>
+
+  <div class="card">
+    <div class="frame dark" style="width:410px;height:470px">
+      <div style="padding:14px"><div style="height:9px;border-radius:5px;background:var(--bg-layer-3);width:76%"></div>
+        <div style="height:9px;border-radius:5px;background:var(--bg-layer-3);width:55%;margin-top:8px"></div>
+        <div style="height:64px;border-radius:9px;background:var(--bg-layer-3);width:70%;margin-top:10px"></div></div>
+      <div class="sheet" style="left:36px;right:12px;bottom:64px;border-radius:12px;border:1px solid var(--border-l2)">
+        <div class="shead" style="padding-top:5px"><span class="h">进行中</span><span class="n">4</span><span class="x">✕</span></div>
+        <div class="chips"><span class="chip on">全部<span class="c">4</span></span><span class="chip">待我处理<span class="c">1</span></span><span class="chip">运行中<span class="c">2</span></span></div>
+        <div class="list">
+          <div class="row"><span class="tag wait">待确认</span>
+            <div class="row-main"><div class="t">重构 runner 的八条执行臂</div><div class="ws">pi-agent-web · 等你确认 2 条命令</div></div><div class="meta">刚刚</div></div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">批量校对 12 篇 README</div><div class="ws">dsh-0.2.1-rc.2 · 正在执行</div></div><div class="meta">3 分钟</div></div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">跑 3 组基准测试</div><div class="ws">example-project · 正在执行</div></div><div class="meta">8 分钟</div></div>
+          <div class="row"><span class="dot" style="background:var(--ok)"></span>
+            <div class="row-main"><div class="t" style="color:var(--label-secondary)">翻译 manifest 文档</div><div class="ws">dshmarket · 已完成，未查看</div></div><div class="meta">12 分钟</div></div>
+        </div>
+      </div>
+      <div style="position:absolute;right:16px;bottom:14px">
+        <div class="pill"><span class="wavebox" style="color:#f9fafb"><svg class="glyph trail" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg><svg class="glyph live" width="20" height="14" viewBox="0 0 24 16"><path d="M1 8h4l2.2-6.4 4 12.6 2.2-6.2H23"/></svg></span>
+          <span style="font-variant-numeric:tabular-nums">4</span></div>
+      </div>
+    </div>
+    <p class="cap"><b>B4 展开态 · 桌面（深色）</b><br>宽屏换成向上浮出的弹层：宽 340–360px，锚在胶囊上方，不加遮罩、点外部即关。桌面场景可以一直开着瞄 <code>批量校对 12 篇 README</code> 这类会话的进度。</p>
+  </div>
+</div>
+
+<h2>A · 侧栏面板 + 中间面板（sidebar.panellist + main）</h2>
+<div class="grid">
+  <div class="card" style="max-width:730px">
+    <div class="app">
+      <div class="side">
+        <div class="brand"><span class="mark">D</span>DeepSeek Harness</div>
+        <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><path d="M4.5 5.5h15v10.5h-10l-5 4.5z"/></svg>会话</div>
+        <div class="navrow active"><svg viewBox="0 0 24 24" class="glyph"><path d="M1.8 12h4l2.3-6.6 4 13 2.2-6.4H22"/></svg>运行中
+          <span class="cb"><span class="badge">4</span></span></div>
+        <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/></svg>插件</div>
+        <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>定时任务</div>
+        <div class="divider"></div>
+        <div class="wshead">工作区<span>＋</span></div>
+        <div class="wsgrp">▸ dsh-0.2.1-rc.2</div>
+        <div class="wsgrp">▸ pi-agent-web</div>
+        <div class="wsgrp">▸ example-project</div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="h">进行中的会话</span><span class="n">4 个 · 2 个工作区</span>
+          <span class="right"><span class="chip on" style="font-size:10.5px;padding:3px 8px">全部</span>
+            <span class="chip" style="font-size:10.5px;padding:3px 8px">待我处理</span>
+            <span class="chip" style="font-size:10.5px;padding:3px 8px">运行中</span>
+            <span class="chip" style="font-size:10.5px;padding:3px 8px">刚完成</span></span></div>
+        <div class="sec"><div class="g">待我处理<span class="line"></span>1</div>
+          <div class="row"><span class="tag wait">待确认</span>
+            <div class="row-main"><div class="t">重构 runner 的八条执行臂</div><div class="ws">pi-agent-web · 等你确认 2 条命令</div></div><div class="meta">刚刚</div></div></div>
+        <div class="sec"><div class="g">运行中<span class="line"></span>2</div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">批量校对 12 篇 README</div><div class="ws">dsh-0.2.1-rc.2 · 正在执行</div></div><div class="meta">3 分钟</div></div>
+          <div class="row"><svg class="spin" viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6"/></svg>
+            <div class="row-main"><div class="t">跑 3 组基准测试</div><div class="ws">example-project · 正在执行</div></div><div class="meta">8 分钟</div></div></div>
+        <div class="sec"><div class="g">刚完成<span class="line"></span>1</div>
+          <div class="row"><span class="dot" style="background:var(--ok)"></span>
+            <div class="row-main"><div class="t" style="color:var(--label-secondary)">翻译 manifest 文档</div><div class="ws">dshmarket · 已完成，未查看</div></div><div class="meta">12 分钟</div></div></div>
+      </div>
+    </div>
+    <p class="cap"><b>A · 桌面（浅色）</b><br>侧栏导航加一行“运行中”，右侧数字角标；点开进入中间面板。三段式分组固定顺序、不随时间跳动；“4 个 · 2 个工作区”让人一眼知道跨了几个区。</p>
+  </div>
+
+  <div class="card" style="max-width:230px">
+    <div class="frame dark" style="width:212px;height:340px;padding:9px 8px;display:flex;flex-direction:column">
+      <div class="brand"><span class="mark">D</span>DSH</div>
+      <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><path d="M4.5 5.5h15v10.5h-10l-5 4.5z"/></svg>会话</div>
+      <div class="navrow active"><svg viewBox="0 0 24 24" class="glyph"><path d="M1.8 12h4l2.3-6.6 4 13 2.2-6.4H22"/></svg>运行中
+        <span class="cb"><span class="badge warn">4</span></span></div>
+      <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/></svg>插件</div>
+      <div class="navrow"><svg viewBox="0 0 24 24" class="glyph"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>定时任务</div>
+      <div class="divider"></div>
+      <div class="wshead">工作区</div>
+      <div class="wsgrp">▸ dsh-0.2.1-rc.2</div>
+      <div class="wsgrp">▸ pi-agent-web</div>
+    </div>
+    <p class="cap"><b>A · 深色角标</b><br>平时角标 Neutral；一旦有“待我处理”转琥珀（红只留给错误）。为 0 时整行隐藏，不占位。侧栏收起时，同样功能退到 B 的胶囊里，两个入口不重复占屏。</p>
+  </div>
+</div>
+
+<h2>图标候选（18px 实尺寸 / 24px / 深色反色）</h2>
+<div class="isheet">
+  <div class="irow">
+    <div class="isz" id="r1"></div><div class="idk" id="d1"></div>
+    <div class="inm">① 波形 ★</div>
+    <div class="ids">“正在活动”里唯一不歧义的形状，18px 仍清楚，和现有气泡/九宫格/时钟都不撞。胶囊里是同一形状加描线动画，一套符号两处用。</div></div>
+  <div class="irow">
+    <div class="isz" id="r2"></div><div class="idk" id="d2"></div>
+    <div class="inm">② 双环缺口</div>
+    <div class="ids">“加载中”语义最强、和现有 spinner 同族；但作为导航图标更像“状态”而不是“一组会话”，静止时易被误读成正在加载。</div></div>
+  <div class="irow">
+    <div class="isz" id="r3"></div><div class="idk" id="d3"></div>
+    <div class="inm">③ 轨道 + 活动点</div>
+    <div class="ids">“多条轨道，其中一条亮着”，语义贴切；18px 下两条短线加圆点容易糊，且像“筛选/排序”图标。</div></div>
+  <div class="irow">
+    <div class="isz" id="r4"></div><div class="idk" id="d4"></div>
+    <div class="inm">④ 脉冲框</div>
+    <div class="ids">会话框里放心跳、意思最全；代价是 18px 内部细节过密，缩小后框线和波形会粘连。</div></div>
+</div>
+<script>
+const I={
+ i1:'<path d="M1.8 12h4l2.3-6.6 4 13 2.2-6.4H22"/>',
+ i2:'<path d="M12 3.8a8.2 8.2 0 1 1-8.2 8.2"/><path d="M12 7.6a4.4 4.4 0 1 1-4.4 4.4" opacity=".4"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
+ i3:'<path d="M4 6.8h9.2M4 15.6h6"/><path d="M11.4 15.6h8.6"/><circle cx="16.6" cy="7" r="2.3" fill="currentColor" stroke="none"/>',
+ i4:'<rect x="3.4" y="4.8" width="17.2" height="12.2" rx="2.4"/><path d="M6.8 11.4h2.3l1.4-3 2.2 6 1.4-3h3.1"/>'
+};
+[1,2,3,4].forEach(n=>{
+  const svg=I['i'+n];
+  document.getElementById('r'+n).innerHTML=[24,20,18].map(s=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" class="glyph">${svg}</svg>`).join('');
+  document.getElementById('d'+n).innerHTML=`<svg width="24" height="24" viewBox="0 0 24 24" class="glyph">${svg}</svg><svg width="18" height="18" viewBox="0 0 24 24" class="glyph">${svg}</svg>`;
+});
+</script>
+</body></html>

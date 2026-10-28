@@ -1,0 +1,46 @@
+{
+  "name": "dsh-https",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "HTTPS entry for DSH Web: TLS termination, ACME (Tencent DNS-01) and a local CA.",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "dependencies": {
+    "@peculiar/x509": "1.14.3",
+    "acme-client": "5.4.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check lib/*.js && node --check lib/client.js",
+    "preflight": "node scripts/acme-preflight.mjs",
+    "pack:check": "npm pack --dry-run",
+    "test:smoke": "node tests/smoke.mjs"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-running-sessions · 真实渲染</title>
+<style>
+  /* 只取插件用到的 token，值与官方 light 主题一致 */
+  body{
+    --dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --dsw-radius-md:6px;
+    --dsw-alias-bg-base:#fff;
+    --dsw-alias-bg-layer-1:#fff;
+    --dsw-alias-label-primary:#0f1115;
+    --dsw-alias-label-secondary:#61666b;
+    --dsw-alias-label-tertiary:#81858c;
+    --dsw-alias-border-l1:#0000000a;
+    --dsw-alias-border-l2:#0000001a;
+    --dsw-alias-border-l3:#0000001f;
+    --dsw-alias-interactive-bg-hover:#2631480f;
+    --dsw-alias-brand-primary:#0f1115;
+    --dsw-alias-state-warn-primary:#f59e0b;
+    --dsw-alias-state-warn-label:#b45309;
+    --dsw-alias-state-warn-tertiary:#fff1dc;
+    --dsw-alias-state-success-primary:#22c55e;
+    --dsw-alias-bg-mask-1:#0000003d;
+    --dsw-elevation-prominent:0 8px 32px #0000001f,0 2px 8px #00000014;
+    --dsw-specific-sidebar-fill:#f9fafb;
+    margin:0;background:#eef0f4;color:var(--dsw-alias-label-primary);
+    font:400 13px/1.45 var(--dsw-font-family);
+  }
+  .stage{display:flex;gap:24px;padding:24px;align-items:flex-start}
+  .col{display:flex;flex-direction:column;gap:18px}
+  .card{background:#fff;border-radius:12px;box-shadow:0 1px 4px #0000001a}
+  .cap{font:600 11px/1.4 var(--dsw-font-family);letter-spacing:.06em;color:#8a8f98;padding:10px 12px 6px}
+  /* 模拟会话标题行，看计数片在真实位置的样子 */
+  .headerbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);height:46px;box-sizing:border-box}
+  .crumb{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+  .spacer{flex:1}
+  .utilities{display:flex;align-items:center;gap:6px}
+  .fakeicon{width:26px;height:26px;border-radius:13px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);border:1px solid var(--dsw-alias-border-l2);font-size:12px}
+  .sidebar{width:238px;background:var(--dsw-specific-sidebar-fill);padding:10px;box-sizing:border-box;border-radius:12px}
+  .panelList{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+  .panelRow{display:flex;align-items:center;gap:8px;min-height:36px;margin:0 2px;padding:7px 8px;border:0;background:0 0;
+    border-radius:var(--dsw-radius-md);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;line-height:22px}
+  .panelRow.active{background:var(--dsw-alias-interactive-bg-hover)}
+  .panelGlyph{display:grid;place-items:center;width:16px;color:var(--dsw-alias-label-secondary)}
+  .panelRow.active .panelGlyph{color:var(--dsw-alias-label-primary)}
+  .panelTitle{font-size:13px}
+  .workspaceRow{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+  .workspaceRow b{font-weight:500;color:var(--dsw-alias-label-primary)}
+  .phone{width:390px;height:620px;background:#fff;position:relative;overflow:hidden;
+    display:flex;flex-direction:column;justify-content:flex-end}
+  .phonehead{position:absolute;top:0;left:0;right:0}
+  .phonepage{flex:1;padding:14px 16px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="col">
+    <div class="card">
+      <div class="cap">B · 会话标题行：运行中+待确认 / 空闲 / 仅待确认</div>
+      <div id="rows"></div>
+    </div>
+    <div class="card" style="overflow:visible;width:420px">
+      <div class="cap">B · 展开（桌面弹层，点击触发片后出现）</div>
+      <div id="openhost" style="position:relative;height:600px;padding:12px"></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="cap">A · 侧栏导航行（上：未选中 / 下：选中）</div>
+      <div id="side"></div>
+    </div>
+    <div class="card" style="width:840px;height:672px;overflow:hidden">
+      <div class="cap">A · 中间面板（整页）</div>
+      <div id="page" style="height:630px;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="cap">移动端 · 底部抽屉（点开后）</div>
+      <div class="phone" id="phone">
+        <div id="phonehead" style="position:absolute;left:0;right:0;bottom:0;padding:0 10px 10px;display:flex;justify-content:flex-end"></div>
+        <div class="phonepage">会话内容…</div>
+        <div id="phonepop"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/tmp/react.js"></script>
+<script src="/tmp/react-dom.js"></script>
+<script>window.__ModuleLoader__ = { load: (v) => { window.__spec = v } }</script>
+<script src="../lib/client.js"></script>
+<script>
+const MINUTE = 60000
+const now = Date.now()
+const snap = (v) => ({ getSnapshot: () => v, subscribe: () => () => {} })
+
+const sessions = {
+  phase: 'ready',
+  ids: ['s1', 's2', 's3', 's4', 's5'],
+  byId: {
+    s1: { id: 's1', displayTitle: '重构 runner 的分组逻辑', updatedAt: now - 2 * MINUTE, running: true, cwd: '/work/b' },
+    s2: { id: 's2', displayTitle: '批量校对 README 与 manifest', updatedAt: now - 6 * MINUTE, running: true, cwd: '/work/a' },
+    s3: { id: 's3', displayTitle: '插件图标资源导出', updatedAt: now - 14 * MINUTE, running: false, cwd: '/work/b' },
+    s4: { id: 's4', displayTitle: '检查 frp 隧道端口映射', updatedAt: now - 23 * MINUTE, running: false, cwd: '/work/c' },
+    s5: { id: 's5', displayTitle: '移动端抽屉样式调整', updatedAt: now - 4 * MINUTE, running: true, cwd: '/work/c' },
+  },
+}
+// s1 等你确认；s2/s5 在跑；s3 刚完成未读；s4 老完成
+const statuses = new Map([
+  ['s1', { running: true, pendingInteraction: { key: 'k', kind: 'approval', sessionId: 's1' } }],
+  ['s2', { running: true }],
+  ['s3', { running: false, completionUnread: true }],
+  ['s5', { running: true }],
+])
+const workspaces = {
+  phase: 'ready', archivedSessionIds: [],
+  items: [
+    { workspaceId: 'a', title: 'dsh-0.2.1-rc.2', sessionIds: ['s2'] },
+    { workspaceId: 'b', title: 'pi-agent-web', sessionIds: ['s1', 's3'] },
+    { workspaceId: 'c', title: 'ops-scripts', sessionIds: ['s4', 's5'] },
+  ],
+}
+const idleSessions = { phase: 'ready', ids: [], byId: {} }
+const emptyWorkspaces = { phase: 'ready', archivedSessionIds: [], items: [] }
+
+const base = { uiWorkspace: { openSession() {} } }
+const ctxBusy = { ...base, sessions: { list: snap(sessions) }, uiSession: { sessionStatus: snap(statuses) }, workspaces: { list: snap(workspaces) } }
+const ctxIdle = { ...base, sessions: { list: snap(idleSessions) }, uiSession: { sessionStatus: snap(new Map()) }, workspaces: { list: snap(emptyWorkspaces) } }
+const waitOnly = new Map([['s1', statuses.get('s1')]])
+const ctxWait = { ...base, sessions: { list: snap({ phase: 'ready', ids: ['s1'], byId: { s1: sessions.byId.s1 } }) },
+  uiSession: { sessionStatus: snap(waitOnly) }, workspaces: { list: snap(workspaces) } }
+
+const spec = window.__spec
+function install(context) {
+  const regs = new Map()
+  spec.factory((n) => (n === 'react' ? React : null)).apply({
+    ...context,
+    effect(fn) { fn() },
+    slots: {
+      inject(_n, f) { f(); return () => {} },
+      register(o, C) { regs.set(o.name + ':' + (o.key || o.id || ''), C); return () => {} },
+    },
+  })
+  return regs
+}
+
+const busy = install(ctxBusy)
+const Chip = busy.get('conversation.session.header.utilities:running-sessions')
+const Main = busy.get('main:running-sessions')
+const Icon = busy.get('sidebar.panellist:running-sessions')
+const ChipIdle = install(ctxIdle).get('conversation.session.header.utilities:running-sessions')
+const ChipWait = install(ctxWait).get('conversation.session.header.utilities:running-sessions')
+
+const headerRow = (Comp, title) => React.createElement('div', { className: 'headerbar' },
+  React.createElement('span', { className: 'crumb' }, title),
+  React.createElement('span', { className: 'spacer' }),
+  React.createElement('div', { className: 'utilities' }, React.createElement(Comp)),
+  React.createElement('div', { className: 'fakeicon' }, '⋯'))
+
+ReactDOM.createRoot(document.getElementById('rows')).render(
+  React.createElement(React.Fragment, null,
+    headerRow(Chip, '重构 runner 的分组逻辑'),
+    headerRow(ChipWait, '重构 runner 的分组逻辑'),
+    headerRow(ChipIdle, '重构 runner 的分组逻辑')))
+
+/* 展开态：挂载后点一下触发片，让组件自己进入 open */
+const openRoot = document.getElementById('openhost')
+ReactDOM.createRoot(openRoot).render(
+  React.createElement('div', { className: 'headerbar', style: { borderRadius: 10 } },
+    React.createElement('span', { className: 'crumb' }, '重构 runner 的分组逻辑'),
+    React.createElement('span', { className: 'spacer' }),
+    React.createElement('div', { className: 'utilities', id: 'opentrig' }, React.createElement(Chip))))
+
+/* A · 侧栏 */
+const side = document.getElementById('side')
+side.innerHTML = '<div class="panelList">' +
+  '<button class="panelRow"><span class="panelGlyph" id="g1"></span><span class="panelTitle">工作区</span></button>' +
+  '<button class="panelRow active"><span class="panelGlyph" id="g2"></span><span class="panelTitle">运行中</span></button>' +
+  '</div><div class="workspaceRow"><b>pi-agent-web</b> · 3</div><div class="workspaceRow"><b>dsh-0.2.1-rc.2</b> · 2</div>'
+// 第一行用官方的「工作区」风格占位图标，避免预览图里两行用同一个波形
+const folder = (sz) => React.createElement('svg', { width: sz, height: sz, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+  React.createElement('path', { d: 'M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l2 2.2h7.8A2.5 2.5 0 0 1 21 9.7v7.3a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17V7.5Z' }))
+ReactDOM.createRoot(document.getElementById('g1')).render(folder(16))
+ReactDOM.createRoot(document.getElementById('g2')).render(React.createElement(Icon, { size: 16, active: true }))
+
+/* A · 整页面板 */
+ReactDOM.createRoot(document.getElementById('page')).render(React.createElement(Main))
+
+/* 移动端：窄视口下同一组件变成底部抽屉 */
+const phoneMount = document.getElementById('phonehead')
+ReactDOM.createRoot(phoneMount).render(React.createElement(Chip))
+
+function clickTriggers() {
+  const openBtn = document.querySelector('#opentrig .rs-trigger')
+  if (openBtn) openBtn.click()
+  const phoneBtn = phoneMount.querySelector('.rs-trigger')
+  if (phoneBtn) phoneBtn.click()
+}
+setTimeout(clickTriggers, 400)
+</script>
+</body>
+</html>

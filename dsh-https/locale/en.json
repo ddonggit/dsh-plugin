@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "HTTPS Access",
+    "description": "HTTPS entry for DSH Web: TLS termination, automatic certificates and a local CA."
+  }
+}

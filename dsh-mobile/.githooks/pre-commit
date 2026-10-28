@@ -1,0 +1,13 @@
+#!/bin/sh
+# 提交前跑仓库统一检查入口；命令自带超时，跑不完或跑不过就拒绝提交。
+# 逃生口（不推荐）：git commit --no-verify
+
+timeout 300 npm run verify
+status=$?
+
+if [ "$status" -ne 0 ]; then
+    echo "pre-commit: npm run verify 失败（退出码 $status），拒绝提交。"
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "HTTPS 接入",
+    "description": "为 DSH Web 增加 HTTPS 入口：TLS 终止、自动证书与本地 CA。"
+  }
+}

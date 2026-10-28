@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>移动端 · 底部抽屉</title>
+<style>
+  body{--dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+    --dsw-alias-bg-base:#fff;--dsw-alias-bg-layer-1:#fff;--dsw-alias-label-primary:#0f1115;
+    --dsw-alias-label-secondary:#61666b;--dsw-alias-label-tertiary:#81858c;
+    --dsw-alias-border-l1:#0000000a;--dsw-alias-border-l2:#0000001a;--dsw-alias-border-l3:#0000001f;
+    --dsw-alias-interactive-bg-hover:#2631480f;--dsw-alias-brand-primary:#0f1115;
+    --dsw-alias-state-warn-primary:#f59e0b;--dsw-alias-state-warn-label:#b45309;
+    --dsw-alias-state-warn-tertiary:#fff1dc;--dsw-alias-state-success-primary:#22c55e;
+    --dsw-alias-bg-mask-1:#0000003d;--dsw-elevation-prominent:0 -8px 32px #0000001f;
+    margin:0;height:100vh;overflow:hidden;font:400 13px/1.45 var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
+  .shell{height:100vh;display:flex;flex-direction:column;position:relative;background:#fff}
+  .bar{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1);flex:none}
+  .bar .t{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .sp{flex:1}
+  .body{flex:1;padding:14px;color:var(--dsw-alias-label-tertiary);font-size:12px;overflow:hidden}
+  .msg{border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:9px 10px;margin-bottom:9px;
+    font-size:12.5px;color:var(--dsw-alias-label-secondary);background:#fafbfc}
+  .composer{flex:none;margin:0 10px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;height:42px;
+    display:flex;align-items:center;padding:0 12px;color:var(--dsw-alias-label-tertiary);font-size:12.5px;
+    margin-bottom:calc(10px + env(safe-area-inset-bottom))}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="bar"><span class="t">重构 runner 的分组逻辑</span><span class="sp"></span><span id="chip"></span></div>
+  <div class="body">
+    <div class="msg">把 collect() 拆成按工作区聚合，再排序。</div>
+    <div class="msg">已经改好 sidebar.panellist 的注册，等下验证。</div>
+    <div class="msg">插件图标资源导出完成，32/48/128 三个尺寸。</div>
+  </div>
+  <div class="composer">发消息给 DSH…</div>
+</div>
+<script src="/tmp/react.js"></script>
+<script src="/tmp/react-dom.js"></script>
+<script>window.__ModuleLoader__ = { load: (v) => { window.__spec = v } }</script>
+<script src="../lib/client.js"></script>
+<script>
+const MINUTE = 60000, now = Date.now()
+const snap = (v) => ({ getSnapshot: () => v, subscribe: () => () => {} })
+const sessions = { phase: 'ready', ids: ['s1','s2','s3','s5'], byId: {
+  s1: { id: 's1', displayTitle: '重构 runner 的分组逻辑', updatedAt: now - 2*MINUTE, running: true, cwd: '/work/b' },
+  s2: { id: 's2', displayTitle: '批量校对 README 与 manifest', updatedAt: now - 6*MINUTE, running: true, cwd: '/work/a' },
+  s3: { id: 's3', displayTitle: '插件图标资源导出', updatedAt: now - 14*MINUTE, running: false, cwd: '/work/b' },
+  s5: { id: 's5', displayTitle: '移动端抽屉样式调整', updatedAt: now - 4*MINUTE, running: true, cwd: '/work/c' },
+}}
+const statuses = new Map([
+  ['s1', { running: true, pendingInteraction: { key: 'k', kind: 'approval', sessionId: 's1' } }],
+  ['s2', { running: true }], ['s3', { running: false, completionUnread: true }], ['s5', { running: true }],
+])
+const workspaces = { phase: 'ready', archivedSessionIds: [], items: [
+  { workspaceId: 'a', title: 'dsh-0.2.1-rc.2', sessionIds: ['s2'] },
+  { workspaceId: 'b', title: 'pi-agent-web', sessionIds: ['s1','s3'] },
+  { workspaceId: 'c', title: 'ops-scripts', sessionIds: ['s5'] },
+]}
+const ctx = { sessions: { list: snap(sessions) }, uiSession: { sessionStatus: snap(statuses) },
+  workspaces: { list: snap(workspaces) }, uiWorkspace: { openSession() {} } }
+const regs = new Map()
+window.__spec.factory((n) => (n === 'react' ? React : null)).apply({
+  ...ctx, effect(fn){ fn() },
+  slots: { inject(_n,f){ f(); return () => {} }, register(o,C){ regs.set(o.name, C); return () => {} } },
+})
+const Chip = regs.get('conversation.session.header.utilities')
+ReactDOM.createRoot(document.getElementById('chip')).render(React.createElement(Chip))
+setTimeout(() => {
+  const b = document.querySelector('.rs-trigger')
+  if (b) b.click()
+}, 300)
+</script>
+</body>
+</html>
