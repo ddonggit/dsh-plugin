@@ -5,6 +5,12 @@
 //   · run.json 由执行器推进；宿主只在执行器心跳消失后补写终态（见 store.recover）
 //   · boot.json 只由本进程在 apply 时写，作为"新实例已加载插件"的握手标记
 //   · 触发时宿主先写 queued，再拉起执行器；执行器接管后宿主不再写阶段
+//
+// 可移植性（重要）：
+//   · 不假设服务一定叫 dsh-web：默认从当前进程的 cgroup 里识别真实单元名
+//   · 不假设一定有 systemd：识别不到单元就退化为"直接重启"（停止旧进程 + 用原 argv 拉起）
+//   · 不假设监听在 127.0.0.1/HTTP：探测用绑定地址 + 端口，兼容 HTTPS 与具体网卡
+//   · 以上都能用配置或环境变量覆盖，见 README
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,7 +18,19 @@ import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { errorOf, isActive, isTerminal, newRun, sanitizeRun } from './state.mjs'
 import { createStore, STALE_HEARTBEAT_MS } from './store.mjs'
-import { pidAlive } from './proc.mjs'
+import { pidAlive, which } from './proc.mjs'
+import {
+  decideMode,
+  firstNonEmpty,
+  hostForUrl,
+  managerArgs,
+  normalizeHost,
+  normalizeManager,
+  normalizeMode,
+  parseCgroupUnit,
+  readCgroupText,
+  resolveProbeUrl,
+} from './environment.mjs'
 
 export const name = 'dsh-restart'
 export const inject = ['connection']
@@ -20,6 +38,15 @@ export const inject = ['connection']
 const RUNNER = fileURLToPath(new URL('./restart-runner.mjs', import.meta.url))
 const COOLDOWN_MS = 3000
 const RUNNER_LAUNCH_TIMEOUT_MS = 8000
+const MAX_ATTEMPTS = 3
+
+function getService(ctx, name) {
+  try {
+    return ctx.get(name)
+  } catch {
+    return undefined
+  }
+}
 
 function resolveHome(ctx) {
   try {
@@ -33,10 +60,8 @@ function resolveHome(ctx) {
 }
 
 function resolvePort(ctx) {
-  try {
-    const server = ctx.get('webServer')
-    if (server && Number(server.port) > 0) return Number(server.port)
-  } catch {}
+  const server = getService(ctx, 'webServer')
+  if (server && Number(server.port) > 0) return Number(server.port)
   const argv = process.argv
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -49,8 +74,21 @@ function resolvePort(ctx) {
   return Number(process.env.DSH_RESTART_PORT) || 3081
 }
 
-function resolveUnit() {
-  return String(process.env.DSH_RESTART_UNIT || 'dsh-web')
+function selfCommand() {
+  return [process.execPath].concat(process.argv.slice(1))
+}
+
+function resolveStartCommand(config) {
+  const custom = config && config.startCommand
+  if (Array.isArray(custom) && custom.length) return custom.map(String)
+  const raw = String(process.env.DSH_RESTART_START_CMD || '').trim()
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length) return parsed.map(String)
+    } catch {}
+  }
+  return selfCommand()
 }
 
 function readDshVersion() {
@@ -74,8 +112,78 @@ function readDshVersion() {
   return 'unknown'
 }
 
-function selfCommand() {
-  return [process.execPath].concat(process.argv.slice(1))
+// 收集一次运行环境；所有"这台机器是什么形态"的判断都集中在这里。
+function collectRuntime(ctx, config) {
+  const cfg = config || {}
+  const home = resolveHome(ctx)
+  const dataDir = process.env.DSH_RESTART_DATA_DIR || path.join(home, 'dsh-restart', 'data')
+  const port = resolvePort(ctx)
+  const cwd = process.cwd()
+
+  const server = getService(ctx, 'webServer')
+  const host = normalizeHost(server && server.host)
+  let origin = ''
+  if (server && typeof server.getOrigin === 'function') {
+    try {
+      origin = String(server.getOrigin() || '')
+    } catch {}
+  }
+  if (!origin && server && typeof server.protocol === 'string' && port > 0) {
+    // 监听尚未 bind 时 getOrigin() 会抛错；配置里的 protocol/host 仍然可信。
+    origin = server.protocol + '//' + hostForUrl(host) + ':' + port
+  }
+  const app = getService(ctx, 'webApp')
+  let advertised = ''
+  if (app && typeof app.getAdvertisedUrl === 'function') {
+    try {
+      advertised = String(app.getAdvertisedUrl() || '')
+    } catch {}
+  }
+  const healthOverride = firstNonEmpty(cfg.healthUrl, process.env.DSH_RESTART_HEALTH_URL)
+  const healthUrl = healthOverride || resolveProbeUrl({ origin, advertised, host, port })
+
+  const detected = parseCgroupUnit(readCgroupText())
+  const configuredUnit = firstNonEmpty(cfg.unit, process.env.DSH_RESTART_UNIT)
+  const unit = configuredUnit || detected.unit
+  const unitSource = configuredUnit ? 'config' : detected.unit ? 'cgroup' : ''
+  const manager =
+    normalizeManager(firstNonEmpty(cfg.manager, process.env.DSH_RESTART_MANAGER)) || detected.manager || 'system'
+  const requestedMode = normalizeMode(firstNonEmpty(cfg.mode, process.env.DSH_RESTART_MODE, 'auto'))
+  const systemctl = which(firstNonEmpty(cfg.systemctl, process.env.DSH_RESTART_SYSTEMCTL, 'systemctl'))
+  const systemdRun = which(firstNonEmpty(cfg.systemdRun, process.env.DSH_RESTART_SYSTEMD_RUN, 'systemd-run'))
+  const hasSystemctl = !!systemctl
+  const decided = decideMode({ requested: requestedMode, unit, unitSource, hasSystemctl })
+  const mode = decided.mode
+  const startCmd = resolveStartCommand(cfg)
+  // 只要 systemd 真的在跑，就把执行器放进独立 scope：
+  // 即使当前是「直接重启」，执行器也不该跟着旧进程所在的 cgroup 一起被回收。
+  const systemdBooted = fs.existsSync('/run/systemd/system')
+  const scope = !!systemdRun && hasSystemctl && (mode === 'systemd' || !!unit || systemdBooted)
+
+  return {
+    home,
+    dataDir,
+    port,
+    cwd,
+    host,
+    origin,
+    advertised,
+    healthUrl,
+    detectedUnit: detected.unit,
+    detectedManager: detected.manager,
+    unit,
+    unitSource,
+    manager,
+    systemctl,
+    systemdRun,
+    hasSystemctl,
+    requestedMode,
+    mode,
+    modeReason: decided.reason,
+    startCmd,
+    scope,
+    systemdBooted,
+  }
 }
 
 function jsonResponse(payload, status) {
@@ -97,21 +205,109 @@ function failResponse(code, extraDetail, status) {
   )
 }
 
-function resolveBin(bin) {
-  const list = String(process.env.PATH || '').split(':').filter(Boolean).concat(['/usr/bin', '/bin', '/usr/local/bin'])
-  for (const dir of list) {
-    const p = path.join(dir, bin)
-    if (fs.existsSync(p)) return p
+function systemctlQuery(runtime, property) {
+  try {
+    const value = execFileSync(
+      runtime.systemctl,
+      managerArgs(runtime.manager).concat(['show', '-p', property, '--value', runtime.unit]),
+      { timeout: 4000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    ).trim()
+    return { value, error: '' }
+  } catch (e) {
+    const stderr = String((e && e.stderr) || '').trim()
+    return { value: '', error: stderr || String((e && e.message) || e) }
   }
-  return bin
 }
 
-function sysctlExists() {
-  const list = String(process.env.PATH || '').split(':').filter(Boolean).concat(['/usr/bin', '/bin', '/usr/local/bin'])
-  for (const dir of list) {
-    if (fs.existsSync(path.join(dir, 'systemctl'))) return path.join(dir, 'systemctl')
+function preflight(runtime) {
+  if (runtime.mode === 'systemd') {
+    if (!runtime.hasSystemctl) return { code: 'NO_SYSTEMCTL', status: 500, detail: '找不到 systemctl：' + runtime.systemctl }
+    if (!runtime.unit) return { code: 'UNIT_NOT_FOUND', status: 400, detail: '未识别到 systemd 单元' }
+    if (!runtime.systemdRun) {
+      return {
+        code: 'NOT_ISOLATED',
+        status: 500,
+        detail: 'systemd 模式需要 systemd-run 把执行器搬出 ' + runtime.unit + ' 的 cgroup',
+      }
+    }
+    const load = systemctlQuery(runtime, 'LoadState')
+    if (load.error) {
+      return { code: 'UNIT_NOT_FOUND', status: 400, detail: 'unit=' + runtime.unit + ' ' + load.error }
+    }
+    if (load.value !== 'loaded') {
+      return { code: 'UNIT_NOT_FOUND', status: 400, detail: 'unit=' + runtime.unit + ' LoadState=' + load.value }
+    }
+  } else {
+    if (!runtime.startCmd.length) {
+      return { code: 'NO_START_COMMAND', status: 500, detail: '没有可用的启动命令' }
+    }
+    if (runtime.unit && runtime.hasSystemctl && !runtime.systemdRun) {
+      return {
+        code: 'NOT_ISOLATED',
+        status: 500,
+        detail: '直接重启运行在 ' + runtime.unit + ' 里，需要 systemd-run 把执行器搬出 cgroup',
+      }
+    }
   }
-  return ''
+  if (!fs.existsSync(RUNNER)) return { code: 'RUNNER_MISSING', status: 500, detail: '缺少执行器文件：' + RUNNER }
+  return null
+}
+
+function runnerArguments(runtime, runId) {
+  const args = [
+    '--run-id',
+    runId,
+    '--data-dir',
+    runtime.dataDir,
+    '--mode',
+    runtime.mode,
+    '--manager',
+    runtime.manager,
+    '--port',
+    String(runtime.port),
+    '--host',
+    runtime.host,
+    '--cwd',
+    runtime.cwd,
+    '--max-attempts',
+    String(MAX_ATTEMPTS),
+    '--fallback',
+    runtime.mode === 'systemd' ? '1' : '0',
+    '--start-cmd',
+    JSON.stringify(runtime.startCmd),
+  ]
+  if (runtime.unit) args.push('--unit', runtime.unit)
+  if (runtime.healthUrl) args.push('--health-url', runtime.healthUrl)
+  if (runtime.systemctl) args.push('--systemctl', runtime.systemctl)
+  if (runtime.systemdRun) args.push('--systemd-run', runtime.systemdRun)
+  return args
+}
+
+function launchPlan(runtime, runId) {
+  const scopeUnit = 'dsh-restart-' + runId
+  if (runtime.scope) {
+    const args = managerArgs(runtime.manager).concat([
+      '--collect',
+      '--quiet',
+      '--scope',
+      '--unit=' + scopeUnit,
+      '--working-directory=' + runtime.cwd,
+      process.execPath,
+      RUNNER,
+    ])
+    return {
+      scope: true,
+      command: runtime.systemdRun,
+      args: args.concat(runnerArguments(runtime, runId)),
+      scopeUnit,
+    }
+  }
+  return {
+    scope: false,
+    command: process.execPath,
+    args: [RUNNER].concat(runnerArguments(runtime, runId)),
+    scopeUnit,
+  }
 }
 
 export function apply(ctx, config) {
@@ -121,17 +317,12 @@ export function apply(ctx, config) {
     return
   }
 
-  const home = resolveHome(ctx)
-  const dataDir = process.env.DSH_RESTART_DATA_DIR || path.join(home, 'dsh-restart', 'data')
-  const unit = resolveUnit()
-  const port = resolvePort(ctx)
-  const healthUrl = 'http://127.0.0.1:' + port + '/'
-  const systemctl = String(process.env.DSH_RESTART_SYSTEMCTL || sysctlExists() || 'systemctl')
-  const dshVersion = readDshVersion()
+  const runtime = collectRuntime(ctx, config)
+  const { home, dataDir, unit, port } = runtime
   const startedAtMs = Date.now() - Math.round(process.uptime() * 1000)
   const startedAt = new Date(startedAtMs).toISOString()
   const store = createStore(dataDir, { bootedAt: startedAtMs })
-  const startCmd = selfCommand()
+  const dshVersion = readDshVersion()
   let lastTriggerAt = 0
 
   store.ensure()
@@ -140,7 +331,7 @@ export function apply(ctx, config) {
   // 只有它是被本轮重启换出来的新进程时才带 runId；老进程自愈重挂时写空 runId。
   ;(() => {
     const run = store.readRun()
-    const previous = run && Date.parse(String(run.startedAt || '')) || 0
+    const previous = (run && Date.parse(String(run.startedAt || ''))) || 0
     const isNewInstance = isActive(run) && Number(run.oldPid) !== process.pid && startedAtMs >= previous - 5000
     store.writeBoot({
       instanceId: Math.random().toString(36).slice(2) + Date.now().toString(36),
@@ -151,6 +342,7 @@ export function apply(ctx, config) {
       nodeVersion: process.version,
       port,
       unit,
+      mode: runtime.mode,
       runId: isNewInstance ? run.runId : '',
     })
   })()
@@ -197,11 +389,25 @@ export function apply(ctx, config) {
         nodeVersion: process.version,
         platform: process.platform,
         arch: process.arch,
+        mode: runtime.mode,
+        modeReason: runtime.modeReason,
+        requestedMode: runtime.requestedMode,
+        manager: runtime.manager,
         unit,
+        unitSource: runtime.unitSource,
+        detectedUnit: runtime.detectedUnit,
+        systemctl: runtime.hasSystemctl ? runtime.systemctl : '',
+        systemdRun: runtime.systemdRun,
+        scopeIsolation: runtime.scope,
+        systemdBooted: runtime.systemdBooted,
+        bindHost: runtime.host,
         port,
-        healthUrl,
+        origin: runtime.origin,
+        advertisedUrl: runtime.advertised,
+        healthUrl: runtime.healthUrl,
+        cwd: runtime.cwd,
         dataDir,
-        systemctl,
+        startCommand: runtime.startCmd.map((part) => (/token|key|secret|pass/i.test(part) ? '***' : part)),
         bootAt: (function () {
           const boot = store.readBoot()
           return boot && boot.at ? boot.at : ''
@@ -240,8 +446,7 @@ export function apply(ctx, config) {
     const current = store.readRun()
     if (isActive(current)) {
       const heartbeat = store.readHeartbeat()
-      const fresh =
-        heartbeat && heartbeat.runId === current.runId && now - (Number(heartbeat.at) || 0) < 8000
+      const fresh = heartbeat && heartbeat.runId === current.runId && now - (Number(heartbeat.at) || 0) < 8000
       if (fresh) return failResponse('BUSY', 'run ' + current.runId + ' 正在进行', 409)
       // 陈旧活跃状态先自愈，再决定是否放行
       store.recover(ctx.logger)
@@ -255,32 +460,23 @@ export function apply(ctx, config) {
     }
     if (now - lastTriggerAt < COOLDOWN_MS) return failResponse('COOLDOWN', '', 429)
 
-    const sctl = systemctl
-    if (!fs.existsSync(sctl) && !fs.existsSync(resolveBin(sctl))) {
-      return failResponse('NO_SYSTEMCTL', '找不到 systemctl：' + sctl, 500)
+    const blocked = preflight(runtime)
+    if (blocked) {
+      ctx.logger?.warn?.('[dsh-restart] 预检未通过：' + blocked.code + ' ' + (blocked.detail || ''))
+      return failResponse(blocked.code, blocked.detail, blocked.status || 400)
     }
-    let loadState = 'unknown'
-    let probeError = ''
-    try {
-      loadState = execFileSync(sctl, ['show', '-p', 'LoadState', '--value', unit], {
-        timeout: 4000,
-        encoding: 'utf8',
-      }).trim()
-    } catch (e) {
-      probeError = String((e && e.message) || e)
-    }
-    if (loadState !== 'loaded') {
-      return failResponse('UNIT_NOT_FOUND', 'unit=' + unit + ' LoadState=' + loadState + (probeError ? ' | ' + probeError : ''), 400)
-    }
-    if (!fs.existsSync(RUNNER)) return failResponse('RUNNER_MISSING', '缺少执行器文件：' + RUNNER, 500)
 
     const runId = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 6)
     const run = newRun({
       runId,
+      mode: runtime.mode,
+      manager: runtime.manager,
       unit,
+      unitSource: runtime.unitSource,
+      host: runtime.host,
       port,
-      healthUrl,
-      maxAttempts: 3,
+      healthUrl: runtime.healthUrl,
+      maxAttempts: MAX_ATTEMPTS,
       oldPid: process.pid,
       triggeredBy: 'web',
       clientRequestId: String((body && body.requestId) || ''),
@@ -291,43 +487,18 @@ export function apply(ctx, config) {
     store.writeLock({ runId, pid: 0, at: Date.now(), unit, pending: true })
     lastTriggerAt = now
 
-    const scopeUnit = 'dsh-restart-' + runId
-    const args = [
-      '--collect',
-      '--quiet',
-      '--scope',
-      '--unit=' + scopeUnit,
-      '--working-directory=' + home,
-      process.execPath,
-      RUNNER,
-      '--run-id',
-      runId,
-      '--data-dir',
-      dataDir,
-      '--unit',
-      unit,
-      '--port',
-      String(port),
-      '--health-url',
-      healthUrl,
-      '--systemctl',
-      sctl,
-      '--max-attempts',
-      '3',
-      '--start-cmd',
-      JSON.stringify(startCmd),
-      '--fallback',
-      '1',
-    ]
-
+    const plan = launchPlan(runtime, runId)
     let child
     let stderrTail = ''
     try {
-      child = spawn(resolveBin('systemd-run'), args, { detached: true, stdio: ['ignore', 'ignore', 'pipe'], cwd: home })
-      stderrTail = ''
+      child = spawn(plan.command, plan.args, {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        cwd: runtime.cwd,
+      })
       child.stderr?.on('data', (buf) => {
         stderrTail = (stderrTail + String(buf)).slice(-600)
-        ctx.logger?.warn?.('[dsh-restart] systemd-run: ' + String(buf).trim())
+        ctx.logger?.warn?.('[dsh-restart] ' + path.basename(plan.command) + ': ' + String(buf).trim())
       })
     } catch (e) {
       store.failLaunch(run, String((e && e.message) || e))
@@ -357,7 +528,12 @@ export function apply(ctx, config) {
         done({
           ok: false,
           detail:
-            'systemd-run 提前退出（code=' + code + (signal ? ', signal=' + signal : '') + '）' + (tail ? '：' + tail.split('\n').slice(-2).join(' / ') : ''),
+            path.basename(plan.command) +
+            ' 提前退出（code=' +
+            code +
+            (signal ? ', signal=' + signal : '') +
+            '）' +
+            (tail ? '：' + tail.split('\n').slice(-2).join(' / ') : ''),
         })
       })
       check = setInterval(() => {
@@ -369,7 +545,10 @@ export function apply(ctx, config) {
           done({ ok: true })
           return
         }
-        done({ ok: false, detail: '执行器 ' + Math.round(RUNNER_LAUNCH_TIMEOUT_MS / 1000) + ' 秒内没有接管（systemd-run 仍在运行，但没有写 lock）' })
+        done({
+          ok: false,
+          detail: '执行器 ' + Math.round(RUNNER_LAUNCH_TIMEOUT_MS / 1000) + ' 秒内没有接管（' + path.basename(plan.command) + ' 仍在运行，但没有写 lock）',
+        })
       }, RUNNER_LAUNCH_TIMEOUT_MS)
     })
     try {
@@ -377,21 +556,36 @@ export function apply(ctx, config) {
     } catch {}
 
     if (!launched.ok) {
-      // systemd-run 客户端退出/超时不等于 scope 已清理；显式 stop，避免遗留执行器晚到后写状态。
       try {
         child.kill('SIGTERM')
       } catch {}
-      try {
-        execFileSync(sctl, ['stop', scopeUnit], { timeout: 3000, stdio: 'ignore' })
-      } catch {}
+      if (plan.scope && runtime.hasSystemctl) {
+        try {
+          execFileSync(runtime.systemctl, managerArgs(runtime.manager).concat(['stop', plan.scopeUnit]), {
+            timeout: 3000,
+            stdio: 'ignore',
+          })
+        } catch {}
+      }
       store.failLaunch(run, launched.detail)
       lastTriggerAt = 0
       ctx.logger?.error?.('[dsh-restart] 执行器启动失败：' + launched.detail)
       return failResponse('LAUNCH_TIMEOUT', launched.detail, 500)
     }
 
-    ctx.logger?.info?.('[dsh-restart] 已触发重启 run=' + runId + ' unit=' + unit + ' port=' + port)
-    return jsonResponse({ ok: true, runId, note: '已触发重启' })
+    ctx.logger?.info?.(
+      '[dsh-restart] 已触发重启 run=' +
+        runId +
+        ' mode=' +
+        runtime.mode +
+        ' unit=' +
+        (unit || '(direct)') +
+        ' host=' +
+        runtime.host +
+        ' port=' +
+        port,
+    )
+    return jsonResponse({ ok: true, runId, mode: runtime.mode, note: '已触发重启' })
   }
 
   async function handle(request) {
@@ -445,6 +639,19 @@ export function apply(ctx, config) {
   }
 
   ctx.logger?.info?.(
-    '[dsh-restart] 已启动：unit=' + unit + ' port=' + port + ' data=' + dataDir + ' dsh=' + dshVersion,
+    '[dsh-restart] 已启动：mode=' +
+      runtime.mode +
+      ' unit=' +
+      (unit || '(direct)') +
+      ' host=' +
+      runtime.host +
+      ' port=' +
+      port +
+      ' probe=' +
+      (runtime.healthUrl || '(tcp)') +
+      ' data=' +
+      dataDir +
+      ' dsh=' +
+      dshVersion,
   )
 }

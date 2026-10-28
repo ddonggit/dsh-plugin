@@ -8,10 +8,11 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import http from 'node:http'
+import https from 'node:https'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -26,7 +27,11 @@ process.env.DSH_RESTART_UNIT = MOCK_UNIT
 const { newRun, startStep, finishStep, resetSteps, stepElapsedMs, errorOf, sanitizeRun, appendHistory, stepOf } =
   await import('../lib/state.mjs')
 const { createStore } = await import('../lib/store.mjs')
-const { cgroupHasUnit, findPidByPort, pidAlive } = await import('../lib/proc.mjs')
+const { cgroupHasUnit, findPidByPort, pidAlive, which } = await import('../lib/proc.mjs')
+const { parseCgroupUnit, normalizeHost, resolveProbeUrl, decideMode, needsIsolation } = await import(
+  '../lib/environment.mjs'
+)
+const { probeService } = await import('../lib/probe.mjs')
 
 let passed = 0
 const failures = []
@@ -53,6 +58,75 @@ async function freePort() {
   const port = server.address().port
   await new Promise((resolve) => server.close(resolve))
   return port
+}
+
+async function waitPort(port, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 8000)
+  while (Date.now() < deadline) {
+    const ok = await new Promise((resolve) => {
+      const socket = net.connect({ host: '127.0.0.1', port })
+      socket.once('connect', () => {
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => resolve(false))
+    })
+    if (ok) return true
+    await new Promise((resolve) => setTimeout(resolve, 120))
+  }
+  return false
+}
+
+// 一个 argv 形态像 `dsh web` 的假 dsh，供直接重启 e2e 使用（isDshWebPid 只认 dsh 形态）。
+function writeMockDsh(dir) {
+  const file = path.join(dir, 'dsh')
+  fs.writeFileSync(
+    file,
+    `import http from 'node:http'
+import https from 'node:https'
+import fs from 'node:fs'
+import path from 'node:path'
+const argv = process.argv.slice(2)
+const val = (flag) => {
+  const i = argv.indexOf(flag)
+  return i >= 0 ? argv[i + 1] : ''
+}
+const port = Number(val('--port'))
+const dataDir = val('--data-dir')
+const runId = val('--run-id')
+const handshake = val('--handshake')
+const pidFile = val('--pid-file')
+const cert = val('--tls-cert')
+const key = val('--tls-key')
+const handler = (req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end('ok') }
+const server = cert && key ? https.createServer({ cert: fs.readFileSync(cert), key: fs.readFileSync(key) }, handler) : http.createServer(handler)
+server.listen(port, '127.0.0.1', () => {
+  if (pidFile) fs.writeFileSync(pidFile, String(process.pid))
+  if (handshake === '1' && runId && dataDir) {
+    fs.writeFileSync(path.join(dataDir, 'boot.json'), JSON.stringify({
+      runId, pid: process.pid, at: new Date().toISOString(), startedAtMs: Date.now() - 100, dshVersion: 'selftest',
+    }))
+  }
+})
+`,
+    { mode: 0o755 },
+  )
+  return file
+}
+
+function makeTestCert(dir) {
+  const cert = path.join(dir, 'cert.pem')
+  const key = path.join(dir, 'key.pem')
+  try {
+    execFileSync(
+      'openssl',
+      ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=api.example.com'],
+      { stdio: 'ignore' },
+    )
+    return { cert, key }
+  } catch {
+    return null
+  }
 }
 
 function waitExit(child, ms) {
@@ -132,25 +206,34 @@ async function runRunnerCase(name, opts) {
   const port = await freePort()
   const dataDir = path.join(dir, 'data')
   const runId = 't-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
-  const behavior = opts.behavior(port, dataDir, runId)
+  const behavior = opts.behavior ? opts.behavior(port, dataDir, runId) : ':'
   const systemctl = writeFakeSystemctl(dir, behavior)
   const extra = opts.setup
     ? await opts.setup({ dir, port, dataDir, runId, systemctl, node: NODE, mockWeb: path.join(dir, 'mock-web.mjs') })
     : null
   const oldPid = Number(opts.oldPid || (extra && extra.oldPid) || 999999)
   const startCmd = opts.startCmd || (extra && extra.startCmd) || []
+  const mode = opts.mode || 'systemd'
+  const unit = opts.unit === undefined ? 'dsh-web' : opts.unit
+  const host = opts.host || '127.0.0.1'
+  const healthUrl =
+    opts.healthUrl === undefined
+      ? (extra && extra.healthUrl) || 'http://127.0.0.1:' + port + '/'
+      : opts.healthUrl
   const store = createStore(dataDir, { bootedAt: Date.now() })
   store.ensure()
-  const run = newRun({ runId, unit: 'dsh-web', port, healthUrl: 'http://127.0.0.1:' + port + '/', maxAttempts: 1, oldPid })
+  const run = newRun({ runId, mode, unit, host, port, healthUrl, maxAttempts: 1, oldPid })
   store.writeRun(run)
 
   const args = [
     RUNNER,
     '--run-id', runId,
     '--data-dir', dataDir,
-    '--unit', 'dsh-web',
+    '--mode', mode,
+    '--manager', 'system',
+    '--host', host,
+    '--cwd', dir,
     '--port', String(port),
-    '--health-url', 'http://127.0.0.1:' + port + '/',
     '--systemctl', systemctl,
     '--max-attempts', '1',
     '--health-timeout', String(opts.healthTimeout || 8000),
@@ -158,8 +241,12 @@ async function runRunnerCase(name, opts) {
     '--backoff', '500',
     '--fallback', opts.fallback ? '1' : '0',
     '--pid-timeout', String(opts.pidTimeout || 15000),
+    '--stop-timeout', String(opts.stopTimeout || 8000),
     '--reparented', '1',
   ]
+  if (unit) args.push('--unit', unit)
+  if (healthUrl) args.push('--health-url', healthUrl)
+  if (opts.scope === false) args.push('--scope', '0')
   if (startCmd.length) args.push('--start-cmd', JSON.stringify(startCmd))
   const runnerEnv = Object.assign({}, process.env, opts.env || {}, (extra && extra.env) || {})
   const child = spawn(NODE, args, { stdio: ['ignore', 'pipe', 'pipe'], env: runnerEnv })
@@ -295,6 +382,121 @@ await test('proc.findPidByPort: 返回真实监听进程', async () => {
     await new Promise((resolve) => server.close(resolve))
   }
   assert.equal(findPidByPort(port), 0)
+})
+
+await test('environment: cgroup 单元/管理器识别与绑定地址规范化', () => {
+  assert.deepEqual(parseCgroupUnit('0::/system.slice/dsh-web.service\n'), { unit: 'dsh-web.service', manager: 'system' })
+  assert.deepEqual(parseCgroupUnit('0::/system.slice/my-dsh.service\n'), { unit: 'my-dsh.service', manager: 'system' })
+  assert.deepEqual(parseCgroupUnit('0::/system.slice/docker-abc.scope\n'), { unit: '', manager: 'system' })
+  assert.deepEqual(
+    parseCgroupUnit('0::/user.slice/user-1000.slice/user@1000.service/app.slice/dsh-web.service\n'),
+    { unit: 'dsh-web.service', manager: 'user' },
+  )
+  // 进程直接挂在 user 管理器下：没有可重启的业务单元，绝不能把 user@1000.service 当目标。
+  assert.deepEqual(parseCgroupUnit('0::/user.slice/user-1000.slice/user@1000.service\n'), {
+    unit: '',
+    manager: 'user',
+  })
+  assert.equal(normalizeHost('0.0.0.0'), '127.0.0.1')
+  assert.equal(normalizeHost('::'), '127.0.0.1')
+  assert.equal(normalizeHost('[::1]'), '::1')
+  assert.equal(normalizeHost('10.1.0.2'), '10.1.0.2')
+  assert.equal(normalizeHost('fe80::1%eth0'), 'fe80::1')
+})
+
+await test('environment: 模式判定、隔离判定与探测地址选择', () => {
+  assert.deepEqual(decideMode({ requested: 'auto', unit: 'x.service', unitSource: 'cgroup', hasSystemctl: true }), {
+    mode: 'systemd',
+    reason: 'cgroup-unit',
+  })
+  assert.equal(decideMode({ requested: 'auto', unit: '', unitSource: '', hasSystemctl: true }).mode, 'direct')
+  assert.equal(decideMode({ requested: 'auto', unit: 'x.service', unitSource: 'config', hasSystemctl: false }).mode, 'direct')
+  assert.equal(decideMode({ requested: 'direct', unit: 'x.service', unitSource: 'config', hasSystemctl: true }).mode, 'direct')
+  assert.equal(needsIsolation({ mode: 'systemd', unit: 'x.service', hasSystemctl: true }), true)
+  assert.equal(needsIsolation({ mode: 'direct', unit: 'x.service', hasSystemctl: true }), true)
+  assert.equal(needsIsolation({ mode: 'direct', unit: '', hasSystemctl: false }), false)
+  assert.equal(
+    resolveProbeUrl({ origin: 'https://10.1.0.2:3000', advertised: 'https://api.example.com:3000/', host: '10.1.0.2', port: 3000 }),
+    'https://10.1.0.2:3000',
+  )
+  assert.equal(
+    resolveProbeUrl({ origin: '', advertised: 'https://api.example.com:3000/', host: '10.1.0.2', port: 3000 }),
+    'https://api.example.com:3000/',
+  )
+  assert.equal(resolveProbeUrl({ origin: '', advertised: '', host: '::1', port: 3099 }), 'http://[::1]:3099/')
+})
+
+await test('probe: TCP / HTTP 5xx / TLS 不匹配时的判定', async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200)
+    res.end('ok')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  try {
+    const ok = await probeService({ host: '127.0.0.1', port, url: 'http://127.0.0.1:' + port + '/', timeout: 1500 })
+    assert.equal(ok.ok, true)
+    assert.equal(ok.via, 'http')
+    const tcpOnly = await probeService({ host: '127.0.0.1', port, timeout: 1500 })
+    assert.equal(tcpOnly.ok, true)
+    assert.equal(tcpOnly.via, 'tcp')
+    // 用 https 去探测一个明文 HTTP 端口：TCP 通但 HTTP 握手失败，不能据此判失败。
+    const mismatch = await probeService({ host: '127.0.0.1', port, url: 'https://127.0.0.1:' + port + '/', timeout: 1500 })
+    assert.equal(mismatch.ok, true)
+    assert.equal(mismatch.via, 'tcp')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+  const closed = await probeService({ host: '127.0.0.1', port, url: 'http://127.0.0.1:' + port + '/', timeout: 800 })
+  assert.equal(closed.ok, false)
+
+  const broken = http.createServer((req, res) => {
+    res.writeHead(503)
+    res.end('down')
+  })
+  await new Promise((resolve) => broken.listen(0, '127.0.0.1', resolve))
+  const brokenPort = broken.address().port
+  try {
+    const down = await probeService({ host: '127.0.0.1', port: brokenPort, url: 'http://127.0.0.1:' + brokenPort + '/', timeout: 1500 })
+    assert.equal(down.ok, false)
+    assert.equal(down.status, 503)
+  } finally {
+    await new Promise((resolve) => broken.close(resolve))
+  }
+})
+
+await test('probe: 自签证书的 HTTPS 端口（IP 访问）也能判在线', async () => {
+  if (!which('openssl')) {
+    console.log('    （跳过：没有 openssl）')
+    return
+  }
+  const dir = tmpDir('probe-tls')
+  const cert = path.join(dir, 'cert.pem')
+  const key = path.join(dir, 'key.pem')
+  try {
+    execFileSync(
+      'openssl',
+      ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=api.example.com'],
+      { stdio: 'ignore' },
+    )
+  } catch {
+    console.log('    （跳过：openssl 生成证书失败）')
+    return
+  }
+  const server = https.createServer({ cert: fs.readFileSync(cert), key: fs.readFileSync(key) }, (req, res) => {
+    res.writeHead(200)
+    res.end('ok')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  try {
+    const res = await probeService({ host: '127.0.0.1', port, url: 'https://127.0.0.1:' + port + '/', timeout: 2000 })
+    assert.equal(res.ok, true)
+    assert.equal(res.via, 'http')
+    assert.equal(res.status, 200)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 await test('host: status 路由返回宿主信息；未知 unit 触发被拦下', async () => {
@@ -691,6 +893,84 @@ await test('runner e2e: 兜底不把无关 HTTP 监听者当成功', async () =>
       assert.equal(result.status, 'failed')
       assert.equal(result.error.code, 'FALLBACK_FAILED')
       assert.equal(result.newPid, 0)
+    },
+  })
+})
+
+await test('runner e2e: 直接模式（无 systemd）换出新进程；HTTPS/IP 探测也通过', async () => {
+  const useTls = !!which('openssl')
+  await runRunnerCase('e2e-direct', {
+    mode: 'direct',
+    unit: '',
+    scope: false,
+    healthTimeout: 10000,
+    grace: 3000,
+    setup: async ({ dir, port, dataDir, runId, node }) => {
+      const mockDsh = writeMockDsh(dir)
+      const cert = useTls ? makeTestCert(dir) : null
+      const tlsArgs = cert ? ['--tls-cert', cert.cert, '--tls-key', cert.key] : []
+      const oldPidFile = path.join(dir, 'old.pid')
+      const old = spawn(
+        node,
+        [
+          mockDsh,
+          'web',
+          '--port',
+          String(port),
+          '--data-dir',
+          dataDir,
+          '--run-id',
+          runId,
+          '--handshake',
+          '0',
+          '--pid-file',
+          oldPidFile,
+        ].concat(tlsArgs),
+        { detached: true, stdio: 'ignore' },
+      )
+      old.unref()
+      const up = await waitPort(port, 8000)
+      if (!up) throw new Error('旧实例没有监听端口')
+      const startCmd = [
+        node,
+        mockDsh,
+        'web',
+        '--port',
+        String(port),
+        '--data-dir',
+        dataDir,
+        '--run-id',
+        runId,
+        '--handshake',
+        '1',
+        '--pid-file',
+        path.join(dir, 'new.pid'),
+      ].concat(tlsArgs)
+      return {
+        oldPid: old.pid,
+        startCmd,
+        healthUrl: (cert ? 'https://' : 'http://') + '127.0.0.1:' + port + '/',
+        cleanup: async () => {
+          for (const file of ['old.pid', 'new.pid']) {
+            try {
+              const pid = Number(fs.readFileSync(path.join(dir, file), 'utf8').trim())
+              if (pid > 1 && pid !== process.pid) process.kill(pid, 'SIGKILL')
+            } catch {}
+          }
+        },
+      }
+    },
+    check: async ({ result, exit, log, port, dir, extra }) => {
+      const newPid = Number(fs.readFileSync(path.join(dir, 'new.pid'), 'utf8').trim())
+      assert.equal(exit.code, 0, log)
+      assert.equal(result.status, 'done')
+      assert.equal(result.mode, 'direct')
+      assert.equal(result.unit, '')
+      assert.equal(result.degraded, false)
+      assert.equal(result.newPid, newPid)
+      assert.equal(findPidByPort(port), newPid)
+      assert.equal(pidAlive(extra.oldPid), false)
+      assert.match(log, /启动：/)
     },
   })
 })

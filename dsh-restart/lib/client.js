@@ -25,6 +25,31 @@ window.__ModuleLoader__.load({
 
     const STYLE_ID = 'dsh-restart/style'
 
+    function modeLabel(info) {
+      if (!info) return '—'
+      if (info.mode === 'systemd') return 'systemd' + (info.manager === 'user' ? ' · user' : '')
+      return '直接重启'
+    }
+
+    function targetLabel(info) {
+      if (!info) return '—'
+      if (info.mode === 'direct' || !info.unit) return '直接重启（无 systemd 单元）'
+      return info.unit
+    }
+
+    function diagCommand(info) {
+      const unit = info && info.unit
+      if (unit) return (info.manager === 'user' ? 'systemctl --user status ' : 'systemctl status ') + unit
+      const dataDir = info && info.dataDir
+      return dataDir ? 'tail -n 100 ' + dataDir + '/runner.log' : 'journalctl -n 100'
+    }
+
+    function endpointLabel(info) {
+      if (!info || !info.port) return '—'
+      const host = info.bindHost || ''
+      return (host.indexOf(':') >= 0 ? '[' + host + ']' : host) + ':' + info.port
+    }
+
     const CSS = `
       .dshr-root {
         --dshr-card: var(--dsw-alias-bg-layer-1, #ffffff);
@@ -495,7 +520,8 @@ window.__ModuleLoader__.load({
           h(
             'ul',
             { className: 'dshr-modalList' },
-            h('li', null, h('span', null, '目标单元'), h('b', null, sys.unit || run.unit || '—')),
+            h('li', null, h('span', null, '目标'), h('b', null, targetLabel(Object.assign({}, run, sys)))),
+            h('li', null, h('span', null, '方式'), h('b', null, modeLabel(sys))),
             h('li', null, h('span', null, '端口'), h('b', null, ':' + (sys.port || run.port || '—'))),
             h('li', null, h('span', null, '当前进程'), h('b', null, String(sys.pid || run.oldPid || '—'))),
           ),
@@ -800,8 +826,8 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'dshr-cmd' },
-                h('code', null, 'systemctl status ' + (lastFailed.unit || 'dsh-web')),
-                h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy('systemctl status ' + (lastFailed.unit || 'dsh-web'), 'status') }, copied === 'status' ? '已复制' : '复制'),
+                h('code', null, diagCommand({ unit: lastFailed.unit || (sys && sys.unit), manager: lastFailed.manager || (sys && sys.manager), dataDir: sys && sys.dataDir })),
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy(diagCommand({ unit: lastFailed.unit || (sys && sys.unit), manager: lastFailed.manager || (sys && sys.manager), dataDir: sys && sys.dataDir }), 'status') }, copied === 'status' ? '已复制' : '复制'),
               ),
               h(
                 'div',
@@ -973,8 +999,9 @@ window.__ModuleLoader__.load({
               'dl',
               { className: 'dshr-rows' },
               row('进程', sys ? String(sys.pid) : '—', true),
-              row('监听', sys ? ':' + sys.port : '—', true),
-              row('单元', sys ? sys.unit : '—', true),
+              row('监听', sys ? endpointLabel(sys) : '—', true),
+              row('模式', sys ? modeLabel(sys) : '—', true),
+              row('单元', sys ? (sys.unit || '—') : '—', true),
               row('版本', sys ? sys.dshVersion : '—', true),
               row('运行时', sys ? 'Node ' + String(sys.nodeVersion).replace(/^v/, '') + ' · ' + sys.platform + '/' + sys.arch : '—'),
               row('内存', sys ? sys.rssMB + ' MB' : '—'),
@@ -1038,8 +1065,8 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dshr-cmd' },
-              h('code', null, 'systemctl status ' + (sys ? sys.unit : 'dsh-web')),
-              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy('systemctl status ' + (sys ? sys.unit : 'dsh-web'), 'status2') }, copied === 'status2' ? '已复制' : '复制'),
+              h('code', null, diagCommand(sys)),
+              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy(diagCommand(sys), 'status2') }, copied === 'status2' ? '已复制' : '复制'),
               h(
                 'button',
                 { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: refresh },
