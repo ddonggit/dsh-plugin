@@ -11,7 +11,7 @@
 | 目录 | 包名 | 版本 | 作用 |
 |---|---|---|---|
 | [`dsh-https`](dsh-https) | `dsh-https` | 0.2.0 | 独立的 HTTPS 入口：TLS 终止、透明反向代理、本地 CA 引导、ACME（腾讯云 DNSPod DNS-01）自动证书 |
-| [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.5.6 | Web 端移动布局（抽屉侧栏、全屏面板、安全区、触控优化）+ 任务完成/等待确认通知（浏览器通知与宿主端多通道推送） |
+| [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.6.0 | Web 端移动布局（抽屉侧栏、全屏面板、安全区、触控优化）+ 任意页面全局返回/关闭 + 任务完成/等待确认通知（浏览器通知与宿主端多通道推送） |
 | [`dsh-restart`](dsh-restart) | `dsh-restart` | 1.1.0 | 受控重启 dsh web：自动识别 systemd 单元 / 无 systemd 直接重启，HTTPS/具体网卡探测，阶段化进度与失败现场 |
 | [`dsh-running-sessions`](dsh-running-sessions) | `dsh-running-sessions` | 0.1.0 | 跨工作区汇总「运行中 / 等待你处理 / 刚完成」的会话，一个入口直达 |
 | [`dsh-usage-query`](dsh-usage-query) | `dsh-usage-query` | 0.3.1 | 设置页「用量查询」：DeepSeek 余额、OpenCode Go 配额、OpenDesign 余额与积分 |
