@@ -162,7 +162,7 @@ const CSS = `
   border: 1px solid var(--dsw-alias-border-1);
   background: var(--dsw-alias-bg-elevated, rgba(32, 32, 32, 0.86));
   color: var(--dsw-alias-text-1, #fff);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
   box-shadow: 0 6px 20px rgb(0 0 0 / 24%);
   -webkit-backdrop-filter: blur(8px);
@@ -173,6 +173,68 @@ const CSS = `
 .dshm-notify:active { transform: scale(0.97); }
 @media (prefers-color-scheme: light) {
   .dshm-notify { background: var(--dsw-alias-bg-elevated, #fff); color: var(--dsw-alias-text-1, #1a1a1a); }
+}
+
+/* Global mobile back button. It is created at body level because the settings
+   dialog portals above the shell's overlay layer; the z-index has to beat every
+   DSH modal so the escape hatch is reachable from any full-screen surface. The
+   position leaves the top title and the top-right close controls alone. */
+.dshm-back {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  transform: translateX(-50%);
+  z-index: 2147483000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-1, rgba(127, 127, 127, 0.24));
+  background: var(--dsw-alias-bg-elevated, rgba(32, 32, 32, 0.9));
+  color: var(--dsw-alias-label-primary, #fff);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 24%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.dshm-back[hidden] { display: none !important; }
+.dshm-back:active { transform: translateX(-50%) scale(0.97); }
+
+/* The settings dialog's own close is a 28x28 icon with a 14px glyph; that is
+   below the touch-target floor and easy to miss beside the horizontal nav
+   strip. Keep the native close, just make it findable. The selector is
+   structural: the dialog's content column is the only direct div child, its
+   first child is the header, and the close is the header's last button. */
+body[data-dshm-surface="mobile"]
+  [role="dialog"][data-shortcut-modal="settings"] > div > div:first-child {
+  height: 64px;
+  padding-top: 14px;
+  padding-bottom: 6px;
+}
+body[data-dshm-surface="mobile"]
+  [role="dialog"][data-shortcut-modal="settings"] > div > div:first-child > button:last-child {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+body[data-dshm-surface="mobile"]
+  [role="dialog"][data-shortcut-modal="settings"] > div > div:first-child > button:last-child svg {
+  width: 18px;
+  height: 18px;
+}
+/* Reserve room for the global back pill so the last settings row can still be
+   scrolled clear of it. The options column is the content column's last child. */
+body[data-dshm-surface="mobile"]
+  [role="dialog"][data-shortcut-modal="settings"] > div > div:last-child {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 /* Settings page: one narrow column, DSH-native tokens, no hard-coded palette. */

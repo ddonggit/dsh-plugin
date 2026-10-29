@@ -55,6 +55,35 @@ class FakeElement {
   remove() {
     this.isConnected = false;
   }
+  appendChild(node) {
+    node.parentElement = this;
+    node.isConnected = true;
+    this.children.push(node);
+    return node;
+  }
+  removeChild(node) {
+    const index = this.children.indexOf(node);
+    if (index >= 0) this.children.splice(index, 1);
+    node.parentElement = null;
+    node.isConnected = false;
+    return node;
+  }
+  click() {
+    for (const listener of this.listeners.filter((item) => item.type === 'click')) {
+      listener.fn({ target: this, preventDefault() {}, stopPropagation() {} });
+    }
+  }
+  getClientRects() {
+    return this.isConnected && !this.hidden ? [{}] : [];
+  }
+  contains(node) {
+    let current = node;
+    while (current) {
+      if (current === this) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
   matches(selector) {
     // Only the selector shapes the plugin actually uses are understood, and a
     // selector list (`button, [role="button"]`) matches when one entry does.
@@ -146,6 +175,14 @@ const rightcol = new FakeElement('div', ['pI_x6G_rightbarCol']);
 sidecol.parentElement = frame;
 frame.children.push(sidecol, center, rightcol);
 frame.setAttribute('data-sidebar-collapsed', 'true');
+frame.setAttribute('data-rightbar-collapsed', 'true');
+
+// The global back button keeps itself hidden while this marker is mounted; the
+// real conversation renders it on every session, including the blank hero.
+const conversationMarker = new FakeElement('div', []);
+conversationMarker.setAttribute('data-conversation-content', '');
+conversationMarker.parentElement = center;
+center.children.push(conversationMarker);
 
 const toggleButton = new FakeElement('button', ['hHd-Xa_toggle']);
 const sidebarRoot = new FakeElement('div', ['hHd-Xa_root']);
@@ -161,6 +198,7 @@ let menuMounted = true;
 
 const styleElements = [];
 const documentListeners = [];
+const documentEvents = [];
 const body = new FakeElement('body');
 
 const documentStub = {
@@ -179,16 +217,38 @@ const documentStub = {
     if (selector.includes('_sidebarCol')) return sidecol;
     if (selector === '.dshm-menu') return menuMounted ? menuButton : null;
     if (selector.includes('data-dshm-toggle')) return menuButton;
+    if (selector.includes('data-dshm-frame')) return frame;
+    if (selector.includes('data-conversation')) return conversationMarker.isConnected ? conversationMarker : null;
+    if (selector.includes('[role="dialog"]') || selector.includes('[role="menu"]') || selector.includes('[role="listbox"]')) {
+      return documentStub.querySelectorAll(selector).at(-1) ?? null;
+    }
     return null;
   },
   querySelectorAll: (selector) => {
     if (selector.includes('_sidebarCol')) return [sidecol];
+    if (selector.includes('data-conversation')) return conversationMarker.isConnected ? [conversationMarker] : [];
+    if (selector.includes('[role="dialog"]') || selector.includes('[role="menu"]') || selector.includes('[role="listbox"]')) {
+      const out = [];
+      const walk = (node) => {
+        for (const child of node.children) {
+          if (child.matches?.(selector)) out.push(child);
+          walk(child);
+        }
+      };
+      walk(body);
+      return out;
+    }
     return [];
   },
   addEventListener: (type, fn, capture) => documentListeners.push({ type, fn, capture }),
   removeEventListener: (type, fn) => {
     const index = documentListeners.findIndex((item) => item.type === type && item.fn === fn);
     if (index >= 0) documentListeners.splice(index, 1);
+  },
+  dispatchEvent: (event) => {
+    documentEvents.push(event);
+    for (const item of documentListeners.filter((entry) => entry.type === event.type)) item.fn(event);
+    return !event.defaultPrevented;
   },
   hasFocus: () => true,
 };
@@ -201,6 +261,18 @@ class MutationObserverStub {
   }
   observe() {}
   disconnect() {}
+}
+
+class KeyboardEventStub {
+  constructor(type, init = {}) {
+    this.type = type;
+    Object.assign(this, init);
+    this.defaultPrevented = false;
+  }
+  preventDefault() {
+    this.defaultPrevented = true;
+  }
+  stopPropagation() {}
 }
 
 const storage = () => {
@@ -372,6 +444,7 @@ const context = vm.createContext({
   AbortSignal,
   Element: FakeElement,
   MutationObserver: MutationObserverStub,
+  KeyboardEvent: KeyboardEventStub,
   CSS: { supports: () => true },
   __ModuleLoader__: {
     load: (registration) => {
@@ -469,6 +542,22 @@ const publishStatuses = (next) => {
   for (const listener of [...sessionFeed.statusListeners]) listener();
 };
 
+// The official layout panel selection the global back button reads and drives.
+let activePanelId = null;
+const panelInfoListeners = new Set();
+const selectPanelCalls = [];
+const setActivePanel = (id) => {
+  activePanelId = id;
+  for (const listener of [...panelInfoListeners]) listener();
+};
+const panelInfo = {
+  getSnapshot: () => ({ activePanelId }),
+  subscribe: (listener) => {
+    panelInfoListeners.add(listener);
+    return () => panelInfoListeners.delete(listener);
+  },
+};
+
 const rawCtx = {
   effect(fn) {
     const dispose = fn();
@@ -494,12 +583,21 @@ const rawCtx = {
     subscribe: () => () => {},
   },
   layout: {
+    panelInfo,
     toggleSidebar: () => {
       toggles += 1;
       // The real layout flips data-sidebar-collapsed; the observer reports it.
       if (frame.hasAttribute('data-sidebar-collapsed')) frame.removeAttribute('data-sidebar-collapsed');
       else frame.setAttribute('data-sidebar-collapsed', 'true');
       for (const observer of observers) observer.callback([{ type: 'attributes', attributeName: 'data-sidebar-collapsed' }]);
+    },
+    selectPanel: (id) => {
+      selectPanelCalls.push(id);
+      setActivePanel(id);
+    },
+    closeRightbar: () => {
+      frame.setAttribute('data-rightbar-collapsed', 'true');
+      for (const observer of observers) observer.callback([{ type: 'attributes', attributeName: 'data-rightbar-collapsed' }]);
     },
   },
   sessions: {
@@ -539,7 +637,7 @@ exportsObject.apply(ctx);
 await new Promise((resolve) => setTimeout(resolve, 80));
 
 // ---- chunk + wiring assertions -------------------------------------------
-for (const chunk of ['client.styles.js', 'client.resource-compat.js', 'client.forensics.js', 'client.sidebar.js', 'client.deeplink.js', 'client.notify.js']) {
+for (const chunk of ['client.styles.js', 'client.resource-compat.js', 'client.forensics.js', 'client.sidebar.js', 'client.back.js', 'client.deeplink.js', 'client.notify.js']) {
   if (!loadCache.has(chunk)) fail(`${chunk} was not loaded at boot`);
 }
 if (loadCache.has('client.diagnostics.js')) fail('the diagnostics chunk must not load at boot');
@@ -587,6 +685,20 @@ if (!menuActive) fail('menu button has no pressed state');
 if (/box-shadow|#fff|#000|rgba\(/.test(menuActive?.[1] ?? '')) fail('menu button pressed state hard-codes a colour');
 if (!css.includes('body[data-dshm-surface="mobile"] .dshm-menu svg')) fail('menu glyph size is not pinned to 20px');
 if (!css.includes('var(--dsw-alias-interactive-bg-hover)')) fail('menu pressed state does not use the official hover token');
+
+// The global back button has to beat the settings dialog's portal layer; a
+// z-index below 1000 would leave it underneath the exact surface it protects.
+const backRule = /\.dshm-back \{([^}]*)\}/.exec(css);
+if (!backRule) fail('stylesheet is missing the global back button rule');
+const backCss = backRule?.[1] ?? '';
+if (!/position:\s*fixed/.test(backCss)) fail('global back button is not fixed');
+if (!/z-index:\s*2147483000/.test(backCss)) fail('global back button does not sit above the settings modal');
+if (!/env\(safe-area-inset-bottom\)/.test(backCss)) fail('global back button ignores the bottom safe area');
+if (!/height:\s*44px/.test(backCss)) fail('global back button touch target is not 44px tall');
+if (!css.includes('.dshm-back[hidden]')) fail('global back button has no hidden rule');
+if (!css.includes('[data-shortcut-modal="settings"] > div > div:first-child > button:last-child')) {
+  fail('settings close button is not enlarged on the mobile surface');
+}
 // ---- DOM contract ---------------------------------------------------------
 // Only client.sidebar.js may name a compressed CSS-module class; every other
 // file — the stylesheet included — has to go through the data-dshm-* markers.
@@ -605,7 +717,7 @@ const CONTRACT_CLASSES = [
   '_panelIcon',
   '_railMark',
 ];
-for (const file of ['client.js', 'client.styles.js', 'client.deeplink.js', 'client.notify.js', 'client.resource-compat.js', 'client.forensics.js', 'client.settings.js', 'client.diagnostics.js']) {
+for (const file of ['client.js', 'client.styles.js', 'client.back.js', 'client.deeplink.js', 'client.notify.js', 'client.resource-compat.js', 'client.forensics.js', 'client.settings.js', 'client.diagnostics.js']) {
   const text = readFileSync(`${dir}/${file}`, 'utf8');
   const leaked = CONTRACT_CLASSES.filter((name) => text.includes(name));
   if (leaked.length > 0) fail(`${file} names a sidebar contract class: ${leaked.join(', ')}`);
@@ -640,6 +752,7 @@ const sourceFiles = [
   'client.js',
   'client.styles.js',
   'client.sidebar.js',
+  'client.back.js',
   'client.deeplink.js',
   'client.notify.js',
   'client.resource-compat.js',
@@ -828,6 +941,123 @@ if (body.getAttribute('data-dshm-surface') !== null) fail('surface marker surviv
 viewportMobile = true;
 for (const observer of observers) observer.callback([{ type: 'childList' }]);
 await new Promise((resolve) => setTimeout(resolve, 30));
+
+// ---- global back button --------------------------------------------------
+// The portalled account menu from the drawer tests is no longer open; leaving
+// it in the body would make the back button close that menu first.
+body.removeChild(portalMenu);
+const backChunk = loadCache.get('client.back.js');
+for (const key of ['installBack', 'shouldShow', 'nextAction']) {
+  if (typeof backChunk?.[key] !== 'function') fail(`back chunk missing ${key}`);
+}
+if (backChunk.shouldShow({ mobile: false, dialog: true, panel: true, drawer: true, rightbar: true, conversation: false })) {
+  fail('global back button must never show on desktop');
+}
+if (!backChunk.shouldShow({ mobile: true, dialog: false, panel: false, drawer: false, rightbar: false, conversation: false })) {
+  fail('global back button must fail open on an unknown full-screen page');
+}
+if (backChunk.shouldShow({ mobile: true, dialog: false, panel: false, drawer: false, rightbar: false, conversation: true })) {
+  fail('global back button must hide on the plain conversation');
+}
+if (backChunk.nextAction({ dialog: true, menu: true, panel: true, drawer: true, rightbar: true }) !== 'dialog') {
+  fail('a dialog must be the first layer the back button closes');
+}
+if (backChunk.nextAction({ dialog: false, menu: false, panel: true, drawer: true, rightbar: true }) !== 'drawer') {
+  fail('the drawer must be closed before the panel underneath it');
+}
+if (backChunk.nextAction({ dialog: false, menu: false, panel: true, drawer: false, rightbar: true }) !== 'rightbar') {
+  fail('the right panel must be closed before the panel underneath it');
+}
+if (backChunk.nextAction({ dialog: false, menu: false, panel: true, drawer: false, rightbar: false }) !== 'panel') {
+  fail('a plugin panel is the last layer before the conversation');
+}
+
+const backButton = body.children.find((node) => node.getAttribute?.('data-dshm-back') !== null);
+if (!backButton) fail('the global back button was not created');
+if (!backButton?.hidden) fail('the global back button is not hidden on the conversation');
+
+// A plugin panel: one tap returns to the conversation.
+setActivePanel('plugins');
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (backButton?.hidden) fail('the global back button did not appear on a plugin panel');
+backButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (selectPanelCalls.at(-1) !== null) fail('the back button did not return to the conversation');
+if (!backButton?.hidden) fail('the back button stayed visible after returning to the conversation');
+
+// A dialog: Escape is dispatched, and its explicit close button is the fallback.
+const fakeDialog = new FakeElement('div', []);
+fakeDialog.setAttribute('role', 'dialog');
+fakeDialog.setAttribute('aria-modal', 'true');
+const fakeClose = new FakeElement('button', []);
+fakeClose.setAttribute('aria-label', 'Close');
+let fakeCloseClicks = 0;
+fakeClose.addEventListener('click', () => {
+  fakeCloseClicks += 1;
+});
+fakeDialog.appendChild(fakeClose);
+body.appendChild(fakeDialog);
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (backButton?.hidden) fail('the global back button did not appear over a dialog');
+documentEvents.length = 0;
+backButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (!documentEvents.some((event) => event.type === 'keydown' && event.key === 'Escape')) {
+  fail('the back button did not dispatch Escape to the modal layer');
+}
+if (fakeCloseClicks !== 1) fail(`the dialog close fallback ran ${fakeCloseClicks} times, expected 1`);
+body.removeChild(fakeDialog);
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (!backButton?.hidden) fail('the back button stayed visible after the dialog closed');
+
+// The drawer is the next layer.
+setCollapsed(false);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (backButton?.hidden) fail('the global back button did not appear over the drawer');
+const togglesBeforeBack = toggles;
+backButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (toggles !== togglesBeforeBack + 1) fail('the back button did not close the drawer');
+if (!frame.hasAttribute('data-sidebar-collapsed')) fail('the drawer stayed open after the back button');
+if (!backButton?.hidden) fail('the back button stayed visible after closing the drawer');
+
+// The right panel is the last optional layer.
+frame.removeAttribute('data-rightbar-collapsed');
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (backButton?.hidden) fail('the global back button did not appear over the right panel');
+backButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (!frame.hasAttribute('data-rightbar-collapsed')) fail('the back button did not close the right panel');
+if (!backButton?.hidden) fail('the back button stayed visible after closing the right panel');
+
+// An unknown full-screen page still gets a visible escape hatch; the reset path
+// is the fallback when no official layer state matches.
+center.removeChild(conversationMarker);
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (backButton?.hidden) fail('the global back button did not fail open on an unknown page');
+const selectsBeforeReset = selectPanelCalls.length;
+backButton?.click();
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (selectPanelCalls.length !== selectsBeforeReset + 1 || selectPanelCalls.at(-1) !== null) {
+  fail('the unknown-page fallback did not ask the layout to return to the conversation');
+}
+center.appendChild(conversationMarker);
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (!backButton?.hidden) fail('the back button did not hide after the conversation marker returned');
+
+// Desktop: the body-level node exists but is never shown.
+viewportMobile = false;
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (!backButton?.hidden) fail('the global back button is visible on a desktop viewport');
+viewportMobile = true;
+for (const observer of observers) observer.callback([{ type: 'childList' }]);
+await new Promise((resolve) => setTimeout(resolve, 20));
 
 // ---- settings section stays lazy ----------------------------------------
 hookCursor = 0;

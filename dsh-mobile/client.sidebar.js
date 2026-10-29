@@ -38,6 +38,10 @@ const SEL = {
   toggle: '[class*="_toggle"]',
   /** Column resize handles (pointer-only affordance). */
   handle: '[class*="_handle"]',
+  /** The frame marked by this chunk; the global back button reads its right-panel state. */
+  frame: '[data-dshm-frame]',
+  /** The conversation is mounted: its message body or its composer seat exists. */
+  conversation: '[data-conversation-content], [data-composer-seat]',
 };
 
 /** Markers this module writes; the stylesheet only reads these. */
