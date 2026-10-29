@@ -53,6 +53,25 @@ function makeCtx() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const event = (ctx, session, type, data) => ctx.emit('session/event', session, { type, data });
 
+/**
+ * Await a promise the dispatcher fulfils from an `unref()`ed timer.
+ *
+ * Every timer the dispatcher arms is unref'd so a 24h auto-answer cannot hold
+ * the host process open. That also means the event loop may have nothing left
+ * to wait for while the assertion below is still pending, and `node --test`
+ * cancels the test ("Promise resolution is still pending but the event loop has
+ * already resolved"). This guard is a ref'd timer, so the loop stays alive for
+ * exactly as long as the test needs and the test fails loudly if the promise
+ * never settles.
+ */
+function within(ms, promise, message) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 function harness(t, overrides = {}) {
   const ctx = makeCtx();
   const feed = [];
@@ -89,10 +108,10 @@ test('an auto-answered approval must not throttle the completion that follows it
 
   const agent = h.agentFor('s-auto-done');
   agent.status = 'running';
-  const outcome = await h.ctx.waterfall(
-    'approval/request',
-    { agent, toolName: 'shell' },
-    () => Promise.resolve('unavailable'),
+  const outcome = await within(
+    2000,
+    h.ctx.waterfall('approval/request', { agent, toolName: 'shell' }, () => Promise.resolve('unavailable')),
+    'the approval waterfall never settled: the auto-answer timer did not start',
   );
   assert.equal(outcome, 'allowed-once');
   await sleep(20);
