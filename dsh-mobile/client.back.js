@@ -250,7 +250,15 @@ function installBack(ctx, options) {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['role', 'aria-modal', 'hidden', 'data-sidebar-collapsed', 'data-rightbar-collapsed'],
+    attributeFilter: [
+      'role',
+      'aria-modal',
+      'hidden',
+      'data-sidebar-collapsed',
+      'data-rightbar-collapsed',
+      'data-conversation-content',
+      'data-composer-seat',
+    ],
   });
 
   sync();
