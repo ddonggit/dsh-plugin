@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- 新增**登录鉴权闸门**（`auth.enabled`，默认关闭，保持 0.2.0 行为）：在插件自己的监听端口上拦下所有未登录请求——插件自有路由（如 billion-context 的 `/__bili/*`）、`/plugins/*`、`/api/*`、WebSocket 升级、静态资源一并覆盖；未登录时页面请求 302 到登录页，非 GET 的接口请求返回 401 JSON。
+- 登录成功后由插件在服务端向 DSH 核心换取 `dsh-auth-*` 会话 Cookie 并 303 回原地址，浏览器不再需要 `?token=`；换取不可用时自动退回核心的令牌跳转，不会形成重定向循环。
+- 口令以 scrypt（N=16384, r=8, p=1）加盐哈希存于 `<dataDir>/auth/password.hash`（0600），与 `@fonlan/dsh-web-auth` 的哈希格式互通；会话是 HMAC-SHA256 签名 Cookie（HttpOnly、SameSite=Lax、HTTPS 下 Secure）。
+- 首次启用支持一次性口令（`<dataDir>/auth/setup-token`，0600，设置成功后删除）；也可用 `scripts/provision-auth.mjs` 预置口令或一键轮换/清除（`--password-file`、`--print`、`--stdin`、`--rotate-only`、`--clear`、`--status`），明文口令不进日志、不进对话记录。
+- 登录限流按来源 IP（默认 5 次/分钟，超过后 1、2、4…分钟指数退避，上限 30 分钟，进程内存级）；审计日志 `<dataDir>/auth/audit.jsonl`（0600，IP 用 HMAC 假名，>5MB 自动轮转）。
+- 退出登录会同时清除 `dsh-auth-*` 核心 Cookie，避免关闭鉴权后旧 Cookie 仍可直入；改密即轮换会话密钥并让所有浏览器下线。
+- 插件设置页新增「登录鉴权」面板：启用状态、是否已设密码、会话有效期、限流阈值、核心 Cookie 换取是否可用，并可在此直接修改访问密码、打开登录/改密/登出页面。
+- 新增 `GET /api/dsh-https/auth/status`、`POST /api/dsh-https/auth/password`，以及插件自有页面路由 `/dsh-https/auth/{login,logout,password,status}`（另接受 `/dsh-https/{login,logout,password}` 短别名）。
+- 新增 `test/auth.test.mjs`（18 个用例，含闸门集成矩阵）与 `tests/auth-smoke.mjs`（真实 TLS 端到端 41 项断言：匿名全拒、登录换取核心 Cookie、插件路由与 WS 放行、会话跨重启存活、登出与改密失效）；`npm run verify` 串起 check + 单元测试 + 两个 smoke。
+- 登录鉴权只用 Node 标准库；`@peculiar/x509`、`acme-client` 仍只服务于本地 CA 与 ACME。
+
 ## 0.2.0
 
 - 设置页新增「证书来源」面板：一键在「证书文件」与「自动证书（ACME）」之间切换，立即生效，无需改 `cordis.patch.yml` 或重启。

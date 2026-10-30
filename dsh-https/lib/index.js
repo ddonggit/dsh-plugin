@@ -5,6 +5,8 @@ import { registerApi } from './api.js';
 import { CertStore, loadPublicCertFiles } from './certs.js';
 import { normalizeConfig, publicConfigSummary } from './config.js';
 import { createAcmeManager } from './acme.js';
+import { AuthStore } from './auth/store.js';
+import { createAuthGate } from './auth/gate.js';
 import { HttpsProxyServer } from './https-server.js';
 import { registerPublicRoutes } from './public-routes.js';
 import {
@@ -20,7 +22,7 @@ import { isPlainObject, sleep, sanitizeError, statMode } from './util.js';
 export const name = 'dsh-https';
 export const inject = ['connection', 'webServer'];
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const START_RETRIES = 6;
 
 function makeLogger(ctx) {
@@ -173,6 +175,16 @@ export function apply(ctx, rawConfig) {
   // Values the settings page owns. They live in <dataDir>/settings.json plus the
   // 0600 Tencent keypair file, so a restart keeps whatever the user chose.
   const runtime = { settings, secrets };
+  // Login gate: its own 0600 state under <dataDir>/auth, plus a decision layer
+  // that the proxy consults for every request and WebSocket upgrade.
+  let connectionService = null;
+  try {
+    connectionService = ctx.get('connection') ?? null;
+  } catch {
+    connectionService = null;
+  }
+  const authStore = new AuthStore({ dir: path.join(config.dataDir, 'auth'), logger });
+  const authGate = createAuthGate({ config, store: authStore, logger, connection: connectionService });
   const seenWarnings = new Set(warnings);
   // Runtime warnings can repeat on every hot-reload tick; keep the status page
   // readable instead of growing the array without bound.
@@ -235,6 +247,7 @@ export function apply(ctx, rawConfig) {
         publicUrls: { https: urls, caPagePath: '/dsh-https/' },
         certs,
         acme,
+        auth: authGate.status(),
         settings: this.settingsStatus(),
         config: publicConfigSummary(config),
       };
@@ -260,6 +273,7 @@ export function apply(ctx, rawConfig) {
           secretIdHint: maskSecret(runtime.secrets.secretId),
           writable: true,
         },
+        auth: authGate.status(),
         restartRequired: false,
       };
     },
@@ -342,6 +356,14 @@ export function apply(ctx, rawConfig) {
         },
       };
     },
+    changePassword: async (input) => {
+      const body = isPlainObject(input) ? input : {};
+      return authGate.changePassword({
+        currentPassword: body.currentPassword,
+        newPassword: body.newPassword,
+        confirmPassword: body.confirmPassword,
+      });
+    },
   };
   try {
     disposers.push(...registerApi({ ctx, state, actions }));
@@ -402,7 +424,21 @@ export function apply(ctx, rawConfig) {
 
     const certStore = new CertStore({ config, logger });
     state.certStore = certStore;
-    const server = new HttpsProxyServer({ config, certStore, logger });
+    try {
+      await authStore.init();
+      if (config.auth.enabled) {
+        await authGate.prime();
+        if (!authGate.status().configured) await authStore.ensureSetupToken();
+      }
+    } catch (error) {
+      addWarning(`登录鉴权状态初始化失败：${sanitizeError(error)}`);
+    }
+    const server = new HttpsProxyServer({
+      config,
+      certStore,
+      logger,
+      auth: config.auth.enabled ? authGate : null,
+    });
     state.server = server;
     const acme = createAcmeManager({
       config,
@@ -486,6 +522,17 @@ export function apply(ctx, rawConfig) {
     }
 
     logger.info?.(`[dsh-https] HTTPS 已监听 ${config.listen.host}:${server.port}，上游 ${config.upstream.protocol}://${config.upstream.host}:${config.upstream.port}`);
+    if (config.auth.enabled) {
+      if (authGate.status().configured) {
+        logger.info?.('[dsh-https] 登录鉴权已启用：未登录访问入口会跳到 /dsh-https/auth/login');
+      } else {
+        logger.error?.(
+          `[dsh-https] 登录鉴权已启用但尚未设置访问密码，请打开入口的 /dsh-https/auth/login 完成首次设置；一次性口令在 ${authStore.setupTokenFile}（0600）`,
+        );
+      }
+    } else {
+      logger.info?.('[dsh-https] 登录鉴权未启用（auth.enabled=false）');
+    }
 
     try {
       await acme.start();

@@ -262,6 +262,7 @@ window.__ModuleLoader__.load({
       var settings = (data && data.settings) || {};
       var settingsAcme = settings.acme || {};
       var credentials = settings.credentials || {};
+      var auth = (data && data.auth) || settings.auth || {};
       var urls = data && data.publicUrls && Array.isArray(data.publicUrls.https) ? data.publicUrls.https : [];
       var running = Boolean(data && data.started && listener.running);
       var errors = (data && data.errors) || [];
@@ -296,6 +297,45 @@ window.__ModuleLoader__.load({
           staging: settingsAcme.staging !== false,
           secretId: "",
         });
+      }
+
+      var authDraftHook = React.useState({ current: "", next: "", confirm: "" });
+      var authDraft = authDraftHook[0];
+      var setAuthDraft = authDraftHook[1];
+      var authBusyHook = React.useState(false);
+      var authBusy = authBusyHook[0];
+      var setAuthBusy = authBusyHook[1];
+
+      function saveAuthPassword() {
+        if (authBusy) return;
+        if (!authDraft.next || authDraft.next.length < 8) {
+          setNotice({ tone: "bad", text: "新密码至少 8 位。" });
+          return;
+        }
+        if (authDraft.next !== authDraft.confirm) {
+          setNotice({ tone: "bad", text: "两次输入的新密码不一致。" });
+          return;
+        }
+        setAuthBusy(true);
+        setNotice(null);
+        postJson("/auth/password", {
+          currentPassword: authDraft.current,
+          newPassword: authDraft.next,
+          confirmPassword: authDraft.confirm,
+        })
+          .then(function () {
+            setAuthDraft({ current: "", next: "", confirm: "" });
+            setNotice({ tone: "ok", text: "密码已更新，所有会话已下线，即将回到登录页…" });
+            setTimeout(function () {
+              if (typeof window !== "undefined") window.location.assign("/dsh-https/auth/login?changed=1");
+            }, 1500);
+          })
+          .catch(function (error) {
+            setNotice({ tone: "bad", text: String(error && error.message ? error.message : error) });
+          })
+          .then(function () {
+            setAuthBusy(false);
+          });
       }
 
       function postJson(path, body) {
@@ -609,6 +649,83 @@ window.__ModuleLoader__.load({
         )
       );
 
+      var authCard = React.createElement(
+        "div",
+        { className: "dsh-https-card" },
+        React.createElement(
+          "div",
+          { className: "dsh-https-cardHead" },
+          React.createElement("span", { className: "dsh-https-cardTitle" }, "登录鉴权"),
+          badge(auth.enabled ? (auth.configured ? "已启用" : "待设置密码") : "未启用", auth.enabled ? (auth.configured ? "ok" : "warn") : "info")
+        ),
+        React.createElement(
+          "div",
+          { className: "dsh-https-cardBody" },
+          row("入口保护", auth.enabled ? "未登录一律跳转登录页（含插件路由与 /api）" : "关闭"),
+          row("会话有效期", (auth.sessionMaxAgeDays || 30) + " 天"),
+          row("登录限流", (auth.rateLimitPerMinute || 5) + " 次/分钟"),
+          row("核心会话换取", auth.mintAvailable === false ? "不可用（缺少 connection 服务）" : auth.mintDshCookie === false ? "已关闭" : "自动"),
+          auth.enabled
+            ? React.createElement(
+                "div",
+                { className: "dsh-https-formGrid" },
+                field("当前密码", React.createElement("input", {
+                  className: "dsh-https-input",
+                  type: "password",
+                  value: authDraft.current,
+                  autoComplete: "current-password",
+                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { current: event.target.value })); },
+                })),
+                field("新密码（至少 8 位）", React.createElement("input", {
+                  className: "dsh-https-input",
+                  type: "password",
+                  value: authDraft.next,
+                  autoComplete: "new-password",
+                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { next: event.target.value })); },
+                })),
+                field("再输一次", React.createElement("input", {
+                  className: "dsh-https-input",
+                  type: "password",
+                  value: authDraft.confirm,
+                  autoComplete: "new-password",
+                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { confirm: event.target.value })); },
+                }))
+              )
+            : null,
+          React.createElement(
+            "div",
+            { className: "dsh-https-hint" },
+            "密码用 scrypt 加盐保存在本机 0600 文件；会话是签名 cookie，改密会让所有浏览器下线。"
+              + (auth.enabled ? "" : "如需开启，请在 profile 配置里设置 auth.enabled=true 后重启 dsh web。")
+          ),
+          React.createElement(
+            "div",
+            { className: "dsh-https-btns" },
+            auth.enabled
+              ? React.createElement(
+                  "button",
+                  { type: "button", className: "dsh-https-btn dsh-https-btn-primary", onClick: saveAuthPassword, disabled: authBusy },
+                  authBusy ? "保存中…" : "修改访问密码"
+                )
+              : null,
+            auth.enabled
+              ? React.createElement(
+                  "a",
+                  { className: "dsh-https-btn", href: "/dsh-https/auth/password", style: { display: "inline-flex", alignItems: "center", textDecoration: "none" } },
+                  "改密页面"
+                )
+              : null,
+            auth.enabled
+              ? React.createElement(
+                  "a",
+                  { className: "dsh-https-btn", href: "/dsh-https/auth/logout", style: { display: "inline-flex", alignItems: "center", textDecoration: "none" } },
+                  "退出登录"
+                )
+              : null
+          )
+        )
+      );
+
       return React.createElement(
         "div",
         { className: "dsh-https-page" },
@@ -619,7 +736,8 @@ window.__ModuleLoader__.load({
         settingsCard,
         certificateCard("公网证书", certs.public, true),
         certificateCard("本地 CA", certs.local, false),
-        acmeCard
+        acmeCard,
+        authCard
       );
     }
 

@@ -39,6 +39,15 @@ export const DEFAULT_CONFIG = Object.freeze({
     },
   },
   proxy: { keepAlive: true, connectTimeoutMs: 10000, maxConnections: 512, addSecureCookie: true },
+  // Login gate. Off by default so an existing proxy setup keeps working; the
+  // deployment on this host turns it on explicitly in the profile patch.
+  auth: {
+    enabled: false,
+    sessionMaxAgeDays: 30,
+    rateLimitPerMinute: 5,
+    mintDshCookie: true,
+    publicPaths: [],
+  },
 });
 
 const CERT_MODES = new Set(['local', 'files', 'acme']);
@@ -246,6 +255,27 @@ export function normalizeConfig(raw = {}, options = {}) {
     addSecureCookie: boolean(proxyRaw.addSecureCookie, true),
   };
 
+  const authRaw = object(source.auth);
+  const authEnabled = boolean(authRaw.enabled, false);
+  const authPublicPaths = [];
+  for (const entry of list(authRaw.publicPaths)) {
+    if (!entry.startsWith('/')) {
+      warnings.push(`auth.publicPaths 忽略非路径条目：${entry}`);
+      continue;
+    }
+    authPublicPaths.push(entry);
+  }
+  const auth = {
+    enabled: authEnabled,
+    sessionMaxAgeDays: integer(authRaw.sessionMaxAgeDays, 30, 1, 365, 'auth.sessionMaxAgeDays', errors),
+    rateLimitPerMinute: integer(authRaw.rateLimitPerMinute, 5, 1, 120, 'auth.rateLimitPerMinute', errors),
+    mintDshCookie: boolean(authRaw.mintDshCookie, true),
+    publicPaths: authPublicPaths,
+  };
+  if (authEnabled && auth.sessionMaxAgeDays > 90) {
+    warnings.push('auth.sessionMaxAgeDays 超过 90 天，已登录浏览器很久都不会重新验证');
+  }
+
   const config = {
     listen: { host: listenHost, port: listenPort },
     upstream: { host: upstreamHost, port: upstreamPort, protocol: upstreamProtocol },
@@ -254,6 +284,7 @@ export function normalizeConfig(raw = {}, options = {}) {
     localCa,
     acme,
     proxy,
+    auth,
   };
 
   return { config, errors, warnings };
@@ -292,5 +323,12 @@ export function publicConfigSummary(config) {
       },
     },
     proxy: config.proxy,
+    auth: {
+      enabled: config.auth.enabled,
+      sessionMaxAgeDays: config.auth.sessionMaxAgeDays,
+      rateLimitPerMinute: config.auth.rateLimitPerMinute,
+      mintDshCookie: config.auth.mintDshCookie,
+      publicPaths: config.auth.publicPaths,
+    },
   };
 }

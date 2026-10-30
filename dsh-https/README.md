@@ -1,11 +1,11 @@
 # dsh-https
 
-为 DSH Web 提供一个独立的 HTTPS 入口：TLS 终止、透明反向代理、本地 CA 引导和 ACME 自动证书。
+为 DSH Web 提供一个独立的 HTTPS 入口：TLS 终止、透明反向代理、可选的登录鉴权闸门、本地 CA 引导和 ACME 自动证书。
 
-它不修改 DSH 核心，也不占用 DSH 自己的 HTTP 端口。插件在 `0.0.0.0:3088`（可配置）监听 HTTPS，把明文请求转发到现有的 `127.0.0.1:3081`；HTTP 的 3080/3081 继续可用。
+它不修改 DSH 核心，也不占用 DSH 自己的 HTTP 端口。插件在自己的监听地址（可配置）上终止 TLS，把明文请求转发到 DSH 原来的监听地址；DSH 自身的 HTTP 入口继续可用。
 
 ```
-浏览器 ──https:3088──▶ dsh-https（TLS 终止）──http:127.0.0.1:3081──▶ DSH Web
+浏览器 ──https:3088──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:3081──▶ DSH Web
                      └─ 本地 CA / ACME 证书、热加载、SNI
 ```
 
@@ -13,11 +13,12 @@
 
 - **独立入口**：默认 `https://<host>:3088/`，HTTP 3080 完全不动。
 - **三种证书来源**：本地 CA、已有 PEM 文件、Let's Encrypt ACME（腾讯云 DNSPod DNS-01）。
+- **登录鉴权（可选）**：`auth.enabled: true` 时，未登录访问**任何路径**（含插件自己注册的路由、`/plugins/*`、`/api/*`、WebSocket）都会被拦到登录页；登录后由插件在服务端完成 DSH 核心的令牌交换，不用再带 `?token=`。口令用 scrypt 加盐，会话是 HMAC 签名 Cookie，改密即全员下线。
 - **热加载**：`files` 模式按 mtime 轮询；ACME 签发后通过 `setSecureContext` 直接换证书，不关闭监听端口。
 - **SNI**：域名命中 ACME 证书时用公网证书；IP/localhost 用本地 CA 叶子证书。
 - **完整代理**：HTTP、SSE、WebSocket upgrade、大请求体；保留 `Host`/`Origin`，去掉 hop-by-hop 头。
 - **安全 Cookie**：HTTPS 响应里的 `Set-Cookie` 自动补 `Secure`（可关）。
-- **设置页**：DSH 设置 →「HTTPS 接入」，查看监听、证书、到期时间、ACME 状态并手动续期；还能一键切换证书来源、填写 ACME 参数和腾讯云密钥，改完立即生效（无需重启）。
+- **设置页**：DSH 设置 →「HTTPS 接入」，查看监听、证书、到期时间、ACME 与登录鉴权状态；可一键切换证书来源、填写 ACME 参数和腾讯云密钥、修改访问密码，改完立即生效（无需重启）。
 - **可移植安装/卸载**：标准 DSH bundle，用 `plugin_manager install_bundle` / `remove_bundle` 或 `dsh plugin add/remove`。
 
 ## 环境要求
@@ -86,7 +87,64 @@ dsh plugin --profile web remove dsh-https
       hosts: ['dsh.example.com']
     acme:
       enabled: false
+    auth:
+      enabled: false           # 打开登录鉴权
 ```
+
+### 登录鉴权
+
+把 DSH Web 入口交给密码保护。**打开后，未登录访问任何路径都会被拦下**——包括插件自己注册的路由（例如 billion-context 的 `/__bili/*`）、`/plugins/*`（否则插件清单匿名可读）、`/api/*` 和 WebSocket 升级。
+
+```yaml
+- id: dsh-https
+  config:
+    auth:
+      enabled: true
+      sessionMaxAgeDays: 30      # 登录后浏览器记住多久（1..365）
+      rateLimitPerMinute: 5      # 每个来源 IP 每分钟允许的失败次数，超过则指数退避
+      mintDshCookie: true        # 登录后由插件服务端换取 DSH 核心 Cookie（推荐）
+      publicPaths: []            # 额外放行的路径；以 * 结尾表示前缀，如 '/healthcheck*'
+```
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `auth.enabled` | `false` | 是否启用登录闸门 |
+| `auth.sessionMaxAgeDays` | `30` | 会话 Cookie 有效期；超过 90 天会给出提醒 |
+| `auth.rateLimitPerMinute` | `5` | 失败次数阈值，超过后按 1、2、4…分钟指数退避（上限 30 分钟）；状态在进程内存里，重启清零 |
+| `auth.mintDshCookie` | `true` | 登录成功后插件自己向核心换取 `dsh-auth-*` Cookie，浏览器地址栏不会再出现 `?token=` |
+| `auth.publicPaths` | `[]` | 额外的免登录路径（`/dsh-https`、`/dsh-https/`、`/dsh-https/ca.crt` 永远免登录，供本地 CA 引导） |
+
+**首次设置**：`auth.enabled: true` 且还没有口令时，登录页会要求填「一次性口令」——它在启动时生成，保存在 `<dataDir>/auth/setup-token`（0600），设置成功后立即删除。想跳过这一步，在服务器上预置口令：
+
+```bash
+# 生成随机口令，明文写到 0600 文件（推荐，口令不会出现在终端记录里）
+node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https" --password-file /root/.dsh/dsh-https-initial-password.txt
+
+# 或者把口令打到终端（只显示这一次）
+node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https" --print
+
+# 查看状态 / 只轮换会话密钥（密码不变，所有浏览器下线）/ 删除口令回到首次设置
+node scripts/provision-auth.mjs --status
+node scripts/provision-auth.mjs --rotate-only
+node scripts/provision-auth.mjs --clear
+```
+
+**忘记密码**：重新运行 `provision-auth.mjs`（会重设密码并让所有已登录浏览器下线）。**临时关闭鉴权**：把 `auth.enabled` 改成 `false` 并重启 DSH Web；`<dataDir>/auth/password.hash` 不存在时等于回到首次设置流程。
+
+**登录页与路由**（都在插件自己的命名空间下，未登录也能访问登录/登出页）：
+
+- `GET /dsh-https/auth/login`（也接受 `/dsh-https/login`）
+- `POST /dsh-https/auth/login`、`GET|POST /dsh-https/auth/logout`
+- `GET /dsh-https/auth/password`、`POST /dsh-https/auth/password`（改密，写完即登出）
+- `GET /dsh-https/auth/status`（已登录可用）
+
+行为要点：
+
+- 已登录但缺少 DSH 核心 Cookie 时，插件会自己换取一次并 303 回原地址；换取不到就退回核心的 `?token=` 跳转，不会形成循环。
+- 客户端自带的 `x-forwarded-*` / `forwarded` / `x-real-ip` 一律**剥除**，不转发给上游；插件自己也不添加转发头，DSH 侧始终按明文 HTTP 语义运行（核心 Cookie 因此是 host 绑定、不带 `Secure`，由插件的 `proxy.addSecureCookie` 统一补上）。
+- 退出登录会同时清掉浏览器里的 `dsh-auth-*` 核心 Cookie，避免以后关了鉴权还能凭旧 Cookie 直接进入。
+- **带 `?token=` 的匿名请求不再直接放行**：会被引到登录页，且令牌参数不会留在登录页 URL 里；登录后由插件自己换取核心会话。也就是说 `dsh web` 打印的令牌 URL 不再能绕过密码（只有 `mintDshCookie: false` 或拿不到 `connection` 服务时才退回"令牌直通"的旧路径）。手机/桌面端如果依赖令牌 URL 配对，请先在设备上用密码登录一次。
+- 审计日志写在 `<dataDir>/auth/audit.jsonl`（0600，IP 用 HMAC 假名，超过 5MB 轮转）；日志、页面和接口都不会输出口令、令牌或 Cookie 值。
 
 ### 监听与上游
 
@@ -181,6 +239,15 @@ ACME 行为：
 - `POST /api/dsh-https/renew`：手动触发一次签发/续期。
 - `POST /api/dsh-https/settings`：切换证书来源并保存 ACME 参数（`{mode, acme:{email,domains,zone,staging}}`），立即生效。
 - `POST /api/dsh-https/credentials`：保存腾讯云密钥（`{secretId, secretKey}`，留空表示不修改），只写本机 0600 文件，响应只返回掩码。
+- `GET /api/dsh-https/auth/status`：登录鉴权是否启用、是否已设密码、会话有效期、限流阈值、核心 Cookie 换取是否可用。
+- `POST /api/dsh-https/auth/password`：改密（`{currentPassword, newPassword, confirmPassword}`），成功后轮换会话密钥，所有浏览器下线。
+
+插件自己的路由（不经过 DSH 的 `/api` 网关，同样只在插件监听端口上提供）：
+
+- `GET /dsh-https/auth/login`、`POST /dsh-https/auth/login`
+- `GET|POST /dsh-https/auth/logout`
+- `GET /dsh-https/auth/password`、`POST /dsh-https/auth/password`
+- `GET /dsh-https/auth/status`
 
 公开（不需要登录，便于装 CA）：
 
@@ -189,19 +256,24 @@ ACME 行为：
 
 ## 安全说明
 
-- 插件只做 TLS 终止和反向代理，不做 HSTS、不强制跳转 HTTP→HTTPS，也不改 DSH 的认证逻辑。
-- 3080 仍然是明文 HTTP 入口；需要“只允许 HTTPS”时，应在网络层关闭 3080，或另外配置防火墙。
-- 证书私钥、ACME 账号密钥、DNS 凭据不会被写入日志；日志只输出路径、域名和脱敏错误。
-- 监听 `0.0.0.0:3088` 意味着局域网可访问。只在可信网络使用，或把 `listen.host` 改成 `127.0.0.1` 后由外层代理转发。
+- 插件只做 TLS 终止、反向代理和（可选的）入口登录鉴权，不做 HSTS、不强制跳转 HTTP→HTTPS。
+- **登录鉴权是访问控制，不是安全边界**：它挡的是"能访问入口但不知道口令"的人。口令只以 scrypt 哈希落盘，会话 Cookie 是 HMAC 签名且 HttpOnly + SameSite=Lax；但过程内存级限流重启即清零，会话是无状态的（登出只清 Cookie，Cookie 泄露只能靠改密止损）。
+- 打开鉴权后，**未登录时所有路径都被拦**，包括插件自己注册的路由（如 `/__bili/*`）、`/plugins/*` 与 WebSocket；只有 `/dsh-https`、`/dsh-https/`、`/dsh-https/ca.crt` 和你在 `auth.publicPaths` 里额外指定的路径例外。**不要把 `/api*` 之类的路径放进 `publicPaths`**，那等于把 DSH 的接口重新暴露出去。
+- 上游是明文 HTTP 且应只监听回环：插件自己不添加 `x-forwarded-*`，客户端的转发头一律剥除，DSH 始终按明文语义运行；请确保 DSH 后端（`upstream.host/port`）只绑 `127.0.0.1`，否则同机其它进程可以绕过登录直接访问它。
+- 3080/3081 等 HTTP 入口不受本插件保护；启用登录鉴权后，应在网络层关闭这些端口，或至少不要让它们暴露到公网。
+- 证书私钥、ACME 账号密钥、DNS 凭据、访问口令、会话 Cookie 和一次性口令都不会被写入日志；日志只输出路径、域名和脱敏错误。审计日志记录事件、结果与 IP 的 HMAC 假名，不记录口令。
 
 ## 开发与验证
 
 ```bash
 pnpm install
-pnpm run check        # node --check
-pnpm test             # 单元测试
-pnpm test:smoke       # 集成 smoke（HTTP/SSE/WS/大请求体）
-pnpm run pack:check   # 检查发布文件
+pnpm run check            # node --check
+pnpm test                 # 单元测试（config/acme/local-ca/settings/auth）
+pnpm test:smoke           # 集成 smoke（HTTP/SSE/WS/大请求体/证书）
+pnpm test:auth-smoke      # 鉴权端到端（真实 TLS + 假核心：匿名全拒、换取 Cookie、WS）
+pnpm run verify           # 以上全部
+pnpm run auth:provision -- --status   # 查看鉴权数据状态
+pnpm run pack:check       # 检查发布文件
 ```
 
 隔离 profile 端到端：

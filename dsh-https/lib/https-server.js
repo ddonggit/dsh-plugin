@@ -88,10 +88,11 @@ function rawUpgradeHead(req, target) {
 }
 
 export class HttpsProxyServer {
-  constructor({ config, certStore, logger = console }) {
+  constructor({ config, certStore, logger = console, auth = null }) {
     this.config = config;
     this.certStore = certStore;
     this.logger = logger;
+    this.auth = auth;
     this.server = null;
     this.sockets = new Set();
     this.agent = null;
@@ -220,6 +221,19 @@ export class HttpsProxyServer {
   }
 
   handleRequest(req, res) {
+    if (this.auth) {
+      try {
+        // The gate either owns the response or defers to forwardRequest(); it
+        // may also call the continuation itself when it changes its mind.
+        if (this.auth.handleRequest(req, res, () => this.forwardRequest(req, res)) === true) return;
+      } catch (error) {
+        this.logger.error?.(`[dsh-https] 登录闸门异常：${sanitizeError(error)}`);
+      }
+    }
+    this.forwardRequest(req, res);
+  }
+
+  forwardRequest(req, res) {
     const target = requestTarget(req.url);
     if (!target) {
       sendText(res, 400, 'Bad Request');
@@ -272,6 +286,17 @@ export class HttpsProxyServer {
   }
 
   handleUpgrade(req, socket, head) {
+    if (this.auth) {
+      try {
+        if (this.auth.handleUpgrade(req, socket, head, () => this.forwardUpgrade(req, socket, head)) === true) return;
+      } catch (error) {
+        this.logger.error?.(`[dsh-https] 登录闸门异常（WebSocket）：${sanitizeError(error)}`);
+      }
+    }
+    this.forwardUpgrade(req, socket, head);
+  }
+
+  forwardUpgrade(req, socket, head) {
     const target = requestTarget(req.url);
     if (!target) {
       socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');

@@ -15,3 +15,9 @@
         acme:
           enabled: false
           agreeTos: false
+        auth:
+          enabled: false
+          sessionMaxAgeDays: 30
+          rateLimitPerMinute: 5
+          mintDshCookie: true
+          publicPaths: []

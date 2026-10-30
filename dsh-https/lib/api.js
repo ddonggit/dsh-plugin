@@ -96,6 +96,28 @@ export function registerApi({ ctx, state, actions }) {
       }
     }
 
+    if (pathname === '/api/dsh-https/auth/status') {
+      if (method !== 'GET') return json({ ok: false, error: 'method not allowed' }, 405, { allow: 'GET' });
+      return json({ ok: true, auth: state.status().auth });
+    }
+
+    if (pathname === '/api/dsh-https/auth/password') {
+      if (method !== 'POST') return json({ ok: false, error: 'method not allowed' }, 405, { allow: 'POST' });
+      if (!actions.changePassword) return json({ ok: false, error: '改密接口未就绪' }, 503);
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ ok: false, error: '请求体不是合法 JSON' }, 400);
+      }
+      try {
+        const result = await actions.changePassword(body ?? {});
+        return json({ ok: true, ...result, status: state.status() });
+      } catch (error) {
+        return json({ ok: false, error: sanitizeError(error) }, 400);
+      }
+    }
+
     return json({ ok: false, error: 'not found' }, 404);
   };
 
@@ -110,5 +132,7 @@ export function registerApi({ ctx, state, actions }) {
     route('/api/dsh-https/renew', ['POST'], '/api/dsh-https/renew'),
     route('/api/dsh-https/settings', ['POST'], '/api/dsh-https/settings'),
     route('/api/dsh-https/credentials', ['POST'], '/api/dsh-https/credentials'),
+    route('/api/dsh-https/auth/status', ['GET'], '/api/dsh-https/auth/status'),
+    route('/api/dsh-https/auth/password', ['POST'], '/api/dsh-https/auth/password'),
   ];
 }
