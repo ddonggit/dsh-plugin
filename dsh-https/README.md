@@ -2,12 +2,19 @@
 
 为 DSH Web 提供一个独立的 HTTPS 入口：TLS 终止、透明反向代理、可选的登录鉴权闸门、本地 CA 引导和 ACME 自动证书。
 
-它不修改 DSH 核心，也不占用 DSH 自己的 HTTP 端口。插件在自己的监听地址（可配置）上终止 TLS，把明文请求转发到 DSH 原来的监听地址；DSH 自身的 HTTP 入口继续可用。
+它不修改 DSH 核心，也不占用 DSH 自己的 HTTP 端口。插件在自己的监听地址（可配置）上终止 TLS，把明文请求转发到 DSH 原来的监听地址。两种典型用法：
 
 ```
-浏览器 ──https:3088──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:3081──▶ DSH Web
+① 并存（默认）：DSH 自己的入口照旧，插件另开一个 HTTPS 端口
+浏览器 ──https:3088──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:3081──▶ DSH Web（自带 HTTP 入口继续可用）
                      └─ 本地 CA / ACME 证书、热加载、SNI
+
+② 作为唯一入口：插件接管原来的对外端口，DSH 退回回环明文
+浏览器 ──https:443──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:3001──▶ DSH Web（只监听回环）
+                    └─ 复用外部证书文件（files 模式）、热加载
 ```
+
+用法 ② 的迁移步骤见「[作为唯一入口部署](#作为唯一入口部署)」。
 
 ## 能力
 
@@ -59,16 +66,45 @@ plugin_manager action=remove_bundle target=dsh-https
 dsh plugin --profile web remove dsh-https
 ```
 
-卸载会移除 Loader 条目并关闭 HTTPS 监听；3080/3081 不受影响。证书和 CA 数据默认保留在 `$DSH_HOME/https`，需要彻底清理时手动删除该目录。
+卸载会移除 Loader 条目并关闭 HTTPS 监听；3080/3081 不受影响。证书、CA 与**登录鉴权数据**（`<dataDir>/auth/`：口令哈希、会话密钥、一次性口令、审计日志）默认保留在 `$DSH_HOME/https`；要彻底清理（或忘记口令后重置）时手动删除该目录即可。**删除鉴权目录等于清掉登录口令**，之后回到"首次设置"流程。
 
 ## 快速使用
+
+**并存模式（默认，本地 CA）**
 
 1. 安装并启动 DSH Web。
 2. 浏览器打开 `https://<主机>:3088/dsh-https/`。
 3. 下载 `dsh-local-ca.crt`，安装为受信任的根证书（页面里有各系统步骤）。
-4. 用 `https://<主机>:3088/` 打开 DSH，首次仍需带 `?token=...` 完成登录。
+4. 用 `https://<主机>:3088/` 打开 DSH。没开鉴权时首次仍需带 `?token=...` 完成核心登录；开了鉴权就先输口令，核心 Cookie 由插件自动换取。
 
 > 本地 CA 的私钥在 `$DSH_HOME/https/local-ca/ca.key.pem`，权限 `0600`。只在你信任的设备上安装这个 CA。
+
+**唯一入口模式（复用已有证书，适合已经上线的实例）**
+
+1. 按下面「[作为唯一入口部署](#作为唯一入口部署)」改好配置与启动参数；
+2. 云安全组 / NAT / 反向代理仍指向原来的对外地址与端口（插件听的就是它）；
+3. 浏览器打开 `https://<域名>:<端口>/`，未登录会被引到 `/dsh-https/auth/login`。
+
+## 作为唯一入口部署
+
+把插件放到原来对外的那个端口上，DSH 退到回环明文。核对清单：
+
+| 步骤 | 要点 |
+| --- | --- |
+| 1. 证书 | `publicCert.mode: 'files'` 指向已有的 `fullchain.pem` / `privkey.pem`；已有外部续期工具（acme.sh / certbot）时 `acme.enabled: false`、`localCa.enabled: false` |
+| 2. 插件监听 | `listen.host` / `listen.port` = 原来对外监听的地址与端口。云主机上要填云 NAT / EIP 指向的那张网卡的地址，**对外监听不能用 `127.0.0.1`** |
+| 3. DSH 本体 | 启动参数改成 `--host 127.0.0.1 --port <另一个端口>`，**删掉** `--tls-cert/--tls-key`，**保留** `--public-url https://<域名>:<对外端口>/` 与 `--trusted-host <域名>`（否则核心的 Host 栅栏和认证 URL 会错） |
+| 4. 端口约束 | `listen.port` 必须不等于 `upstream.port`（配置校验会直接拒绝相同端口） |
+| 5. 证书续期 | 外部工具续期后插件最多 `watchIntervalSec` 秒热加载；此时应停用「证书变了就重启 DSH」的定时器（例如 DSH 自带的 `dsh-web-cert-check.timer`） |
+| 6. 登录鉴权 | `auth.enabled: true`，并按「[登录鉴权](#登录鉴权)」预置口令 |
+| 7. 收尾 | 确认上游端口只监听回环（`ss -ltnp \| grep <upstream.port>` 只见 `127.0.0.1`），每台设备用口令登录一次 |
+
+注意：
+
+- 迁移后 **DNS、云安全组、NAT 都不用改**：插件听的是原来那个地址和端口。
+- **令牌 URL 不再能绕过口令**：`dsh web` 打印的 `?token=...` 会被先引到登录页。
+- 回退：把启动参数改回带 `--tls-cert/--tls-key` 的原样，并把 `dsh-https` 从 profile 依赖和 `dsh.profile.bundles` 里移除后重启；只想临时恢复"无口令"，把 `auth.enabled` 改成 `false` 即可。
+- 改拓扑属于宿主半改动，**必须重启 DSH Web 才生效**；重启会中断正在进行的会话，建议做成"备份 → 改文件 → 校验组合配置 → 重启 → 看门狗自检 → 失败自动还原"的单命令脚本（本机实例的参考实现是 `/root/.dsh/bin/dsh-https-{cutover,verify,rollback}.sh`，宿主专属、不随插件发布）。
 
 ## 配置
 
@@ -144,7 +180,9 @@ node scripts/provision-auth.mjs --clear
 - 客户端自带的 `x-forwarded-*` / `forwarded` / `x-real-ip` 一律**剥除**，不转发给上游；插件自己也不添加转发头，DSH 侧始终按明文 HTTP 语义运行（核心 Cookie 因此是 host 绑定、不带 `Secure`，由插件的 `proxy.addSecureCookie` 统一补上）。
 - 退出登录会同时清掉浏览器里的 `dsh-auth-*` 核心 Cookie，避免以后关了鉴权还能凭旧 Cookie 直接进入。
 - **带 `?token=` 的匿名请求不再直接放行**：会被引到登录页，且令牌参数不会留在登录页 URL 里；登录后由插件自己换取核心会话。也就是说 `dsh web` 打印的令牌 URL 不再能绕过密码（只有 `mintDshCookie: false` 或拿不到 `connection` 服务时才退回"令牌直通"的旧路径）。手机/桌面端如果依赖令牌 URL 配对，请先在设备上用密码登录一次。
-- 审计日志写在 `<dataDir>/auth/audit.jsonl`（0600，IP 用 HMAC 假名，超过 5MB 轮转）；日志、页面和接口都不会输出口令、令牌或 Cookie 值。
+- 审计日志写在 `<dataDir>/auth/audit.jsonl`（0600，IP 用 HMAC 假名，超过 5MB 轮转）。每行形如 `{"ts":"2026-10-30T14:15:40.728Z","event":"upgrade-denied","ip":"<假名>","detail":"/api/remote.mux"}`；事件包括 `login-ok`、`login-failed`、`setup-failed`、`login-throttled`、`password-created`、`password-changed`、`password-change-failed`、`upgrade-denied`。日志、页面和接口都**不会**输出口令、令牌或 Cookie 值。
+- **每台设备都要各自登录一次**：口令登录后浏览器记住 `sessionMaxAgeDays` 天。手机、平板、第二台电脑，以及以前靠令牌 URL 配对的桌面端都一样；旧设备停在过期页面上会反复提示连接被拒，在那台设备登录一次（或关掉旧页面）即可。口令最短 8 位。
+- 会话是无状态的签名 Cookie：**改密会让所有设备立即下线**；`/dsh-https/auth/logout` 会同时清掉核心的 `dsh-auth-*` Cookie。
 
 ### 监听与上游
 
@@ -251,8 +289,8 @@ ACME 行为：
 
 公开（不需要登录，便于装 CA）：
 
-- `GET /dsh-https/`：CA 安装引导页。
-- `GET /dsh-https/ca.crt`：下载本地根证书。
+- `GET /dsh-https/`：CA 安装引导页（同时也是插件状态页）。
+- `GET /dsh-https/ca.crt`：下载本地根证书。**只有启用了本地 CA（`localCa.enabled: true`）时可用**；用 `files`/`acme` 证书时该地址返回 `503 本地 CA 尚未就绪`，属正常，页面上那个下载链接可以忽略。
 
 ## 安全说明
 
@@ -276,16 +314,36 @@ pnpm run auth:provision -- --status   # 查看鉴权数据状态
 pnpm run pack:check       # 检查发布文件
 ```
 
-隔离 profile 端到端：
+隔离 profile 端到端（本机实测可用；不会碰你在用的那个 profile）：
 
 ```bash
 export DSH_HOME=/tmp/dsh-https-e2e
-dsh web --dump-config >/dev/null          # 初始化 web 模板
-dsh plugin --profile web add /path/dsh-https
-# 在 $DSH_HOME/profiles/web/cordis.patch.yml 里把 listen.port 改成 3098
-dsh web --no-open --host 127.0.0.1 --port 3099
-curl -k https://127.0.0.1:3098/dsh-https/
+
+# 1) 造一个隔离 profile，并把插件装进去
+dsh --profile gate-e2e --from-default-profile web --dump-default-config >/dev/null
+dsh plugin --profile gate-e2e add link:/path/to/dsh-https
+
+# 2) 配置：插件听 10.1.0.2:3098，DSH 听回环 3101，用真证书 + 开鉴权
+cat > "$DSH_HOME/profiles/gate-e2e/cordis.patch.yml" <<'YAML'
+- id: dsh-https
+  config:
+    listen: { host: '10.1.0.2', port: 3098 }
+    upstream: { host: '127.0.0.1', port: 3101, protocol: 'http' }
+    dataDir: '/tmp/dsh-https-e2e/https'
+    publicCert: { mode: 'files', certFile: '/path/fullchain.pem', keyFile: '/path/privkey.pem' }
+    auth: { enabled: true }
+YAML
+
+# 3) 预置口令，然后起 DSH（注意：命令里不带 `web`）
+node scripts/provision-auth.mjs --data-dir /tmp/dsh-https-e2e/https --password-file /tmp/dsh-https-e2e/pw.txt --quiet
+DSH_WEB_TOKEN=test-token dsh --profile gate-e2e --no-open --host 127.0.0.1 --port 3101 \
+  --public-url https://example.com:3098/ --trusted-host example.com
+
+# 4) 从外面看：匿名请求应 302 到登录页
+curl -k --resolve example.com:3098:10.1.0.2 -o /dev/null -w '%{http_code}\n' https://example.com:3098/
 ```
+
+CLI 形式容易踩坑：`dsh --profile <name> web …` 会报 `too many arguments`，`dsh web --profile <name>` 会报 `select a profile only once`；正确写法是 **`dsh --profile <name> --no-open …`**（不带 `web`）。验证完记得结束临时进程并删掉 `$DSH_HOME`。
 
 发布检查：
 
@@ -297,12 +355,19 @@ curl -k https://127.0.0.1:3098/dsh-https/
 
 | 现象 | 检查 |
 | --- | --- |
-| 端口没起来 | `ss -ltnp \| grep 3088`；看 DSH 日志里的 `[dsh-https]` |
+| 端口没起来 | `ss -ltnp \| grep <listen.port>`；启动错误以 `[dsh-https]` 前缀走 DSH 日志的 warn/error（默认日志级别下 info 不会出现在 `journalctl -u dsh-web` 里） |
 | 403 被 DSH 拒绝 | `Host` 是否在 `trustedHosts`；用域名时检查 `--trusted-host` |
 | 证书警告 | `files`/ACME 证书是否覆盖当前访问的主机名；本地 CA 是否已信任 |
 | ACME 一直失败 | 域名是否有公网 NS；DNSPod 凭据是否有目标 zone 权限；先看 staging 错误 |
 | 设置页不显示 | 客户端 bundle 是否可访问：`/plugins/dsh-https/client.js`；重启 DSH 后刷新页面 |
 | 换证书不生效 | `files` 模式看 mtime；ACME 看 `meta.json` 的 `notAfter` 和日志 |
+| 匿名访问全被引到登录页 | 正常，闸门正在生效。临时恢复"无口令"把 `auth.enabled` 改成 `false` 并重启 |
+| 带 `?token=` 也被引到登录页 | 正常：令牌不再直通，登录后由插件换核心 Cookie。要用回核心原样的令牌流程就设 `auth.mintDshCookie: false` |
+| 某台设备一直"连接被拒" | 那台设备还没有会话：在它上面用口令登录一次，或关掉它的旧页面（审计里表现为连续 `upgrade-denied`） |
+| 担心上游被绕过 | `ss -ltnp \| grep <upstream.port>` 必须只见 `127.0.0.1`；对外只暴露插件那个端口 |
+| `/dsh-https/ca.crt` 返回 503 | `files`/`acme` 模式下没有本地 CA，属正常 |
+| 忘了口令 | 重设：把想用的口令写进文件，再跑 `node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https" --password-file <该文件>`（会轮换会话密钥，所有设备下线）；或 `--clear` 删掉口令回到"一次性口令首次设置" |
+| 状态到底开没开 | 设置页「HTTPS 接入」卡片，或登录后 `GET /api/dsh-https/status` 看 `auth` 字段 |
 
 ## License
 

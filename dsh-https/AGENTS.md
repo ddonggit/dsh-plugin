@@ -45,6 +45,31 @@ pnpm run verify       # check + test（含 test/auth.test.mjs）+ test:smoke + t
 
 ## 部署注意
 
-- 切换拓扑时：`listen.port` 必须不等于 `upstream.port`；DSH 自己要去掉 `--tls-cert/--tls-key`，把 `--host` 收回到 `127.0.0.1`，保留 `--public-url` 与 `--trusted-host`（域名访问靠它过 Host 栅栏）。
+- 切换拓扑时：`listen.port` 必须不等于 `upstream.port`；DSH 自己要去掉 `--tls-cert/--tls-key`，把 `--host` 收回到 `127.0.0.1`，保留 `--public-url` 与 `--trusted-host`（域名访问靠它过 Host 栅栏）。云主机上**对外监听必须留在云 NAT/EIP 指向的那张网卡的地址**（本机是 `10.1.0.2`），只有上游能收回到回环。
 - 上游必须只监听回环，否则同机进程可以绕过登录闸门直接访问 DSH。
 - **重启 DSH Web 会中断正在进行的会话**（包括正在操作的智能体会话），所以切流/回滚要用带看门狗与自动回滚的单命令脚本，时机由用户决定，不要在别人的会话里擅自重启。
+
+## 本机部署事实（2026-10-30 起生效）
+
+- 拓扑：`10.1.0.2:3000`（dsh-https：TLS 终止 + 登录鉴权，证书用 `files` 模式复用 `/opt/magpie/certs/{fullchain,privkey}.pem`）→ `127.0.0.1:3001`（dsh 本体，明文）。
+- systemd：`/etc/systemd/system/dsh-web.service`（权威）与副本 `/root/.dsh/bin/dsh-web.service` 内容一致；`ExecStart` = `dsh web --no-open --host 127.0.0.1 --port 3001 --public-url https://api.comptar.cn:3000/ --trusted-host api.comptar.cn`；另有 `EnvironmentFile=/root/.dsh/web-token` 与 `ExecStartPre=/root/.dsh/bin/ensure-web-fixed-token.sh`。
+- profile：`/root/.dsh/profiles/web`；`cordis.patch.yml` 有 `id: dsh-https`（listen `10.1.0.2:3000`、upstream `127.0.0.1:3001`、`dataDir: /root/.dsh/https`、`auth.enabled: true`）；`package.json` 的依赖与 `dsh.profile.bundles` 都含 `dsh-https: link:/opt/dsh-plugins/dsh-https`。
+- 数据：`/root/.dsh/https/auth/{password.hash,secret,audit-key,audit.jsonl,setup-token}`；首次口令明文在 `/root/.dsh/dsh-https-initial-password.txt`（0600，用完即删）。
+- `dsh-web-cert-check.timer/.service` 已 **disabled**（证书改由插件热加载）；acme.sh 仍写同一对 PEM，插件最多 `watchIntervalSec`（30 秒）内换新，无需重启。
+- 运维脚本（宿主专属，不在仓库、也不随插件发布）：
+
+| 脚本 | 用法 |
+| --- | --- |
+| `/root/.dsh/bin/dsh-https-verify.sh` | `gate`（默认：逐项确认匿名全被拦、上游只监听回环、口令文件权限）/ `--expect-legacy`（确认还是老的 dsh 自带 TLS）。目标可用 `DSH_HTTPS_ENTRY_HOST/ENTRY_PORT/ENTRY_IP/UPSTREAM_PORT/DATA_DIR` 改 |
+| `/root/.dsh/bin/dsh-https-cutover.sh` | `--dry-run` 先看要写什么；`--print-config` 只打印 patch 与 unit；直接执行 = 备份 → 预置口令 → 追加 patch → `dsh plugin add` → 校验组合配置 → 改 unit → 停 cert timer → 重启 → 看门狗 180 秒自检，失败自动回滚 |
+| `/root/.dsh/bin/dsh-https-rollback.sh` | `--list` 列备份；默认取最新；只还原 unit / `package.json` / `cordis.patch.yml` 并重启，**不删鉴权数据**（随时能再切回） |
+
+备份目录：`/root/.dsh/backup/dsh-https-<时间戳>/`。
+
+## 踩过的坑（改闸门或这些脚本前先看）
+
+- `DSH_HOME` 不是 profile 目录的上一级：`/root/.dsh/profiles/web` 要 `dirname` **两次**才得到 `/root/.dsh`。切流脚本曾少算一层，把 `dsh plugin add` 指到错误 home，在 `/root/.dsh/profiles/profiles/web` 建出一个假 profile，报"组合配置里没有对外端口 3000"（那份假配置是插件默认的 3088）。现在脚本先校验 `$DSH_HOME/profiles/<name>` 存在，否则直接拒绝运行。
+- 重启**之前**的任何失败都必须把改过的文件还原（切流脚本现在用 `abort_pre` + `ERR` trap，已用注入失败的沙箱测试验证），否则用户会拿到一个"半改"的 profile。
+- 判断组合配置是否正确要同时查 id 和两个端口：`dsh --profile web --dump-config | grep -A16 'id: dsh-https'`，`port: 3000` 与 `port: 3001` 缺一不可。
+- 本机 `dsh` 版本下 `dsh plugin --profile <name> add …` **会**自动更新 `dsh.profile.bundles`（仓库根 README 的旧说法已更正）。
+- 宿主半的 `logger.info` 在默认日志级别下不进 `journalctl`（只看得到 warn/error）；确认闸门状态用设置页或 `/api/dsh-https/status`。
