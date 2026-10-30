@@ -165,7 +165,7 @@ node scripts/provision-auth.mjs --rotate-only
 node scripts/provision-auth.mjs --clear
 ```
 
-**忘记密码**：`node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https"` 会生成一个新口令（**只在终端显示这一次**）并让所有已登录浏览器下线；想自己指定就用 `--stdin` 或 `--password-file <写着你想要口令的文件>`。**临时关闭鉴权**：把 `auth.enabled` 改成 `false` 并重启 DSH Web。`<dataDir>/auth/password.hash` 不存在时等于回到首次设置流程（需要 `<dataDir>/auth/setup-token` 里的一次性口令）。
+**忘记密码**：`node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https"` 会生成一个新口令（**只在终端显示这一次**）并让所有已登录浏览器下线（会话密钥一换，运行中的插件会在几秒内自动读取，无需重启）；想自己指定就用 `--stdin` 或 `--password-file <写着你想要口令的文件>`。**临时关闭鉴权**：把 `auth.enabled` 改成 `false` 并重启 DSH Web。`<dataDir>/auth/password.hash` 不存在时等于回到首次设置流程（需要 `<dataDir>/auth/setup-token` 里的一次性口令）。
 
 **登录页与路由**（都在插件自己的命名空间下，未登录也能访问登录/登出页）：
 
@@ -182,7 +182,7 @@ node scripts/provision-auth.mjs --clear
 - **带 `?token=` 的匿名请求不再直接放行**：会被引到登录页，且令牌参数不会留在登录页 URL 里；登录后由插件自己换取核心会话。也就是说 `dsh web` 打印的令牌 URL 不再能绕过密码（只有 `mintDshCookie: false` 或拿不到 `connection` 服务时才退回"令牌直通"的旧路径）。手机/桌面端如果依赖令牌 URL 配对，请先在设备上用密码登录一次。
 - 审计日志写在 `<dataDir>/auth/audit.jsonl`（0600，IP 用 HMAC 假名，超过 5MB 轮转）。每行形如 `{"ts":"2026-10-30T14:15:40.728Z","event":"upgrade-denied","ip":"<假名>","detail":"/api/remote.mux"}`；事件包括 `login-ok`、`login-failed`、`setup-failed`、`login-throttled`、`password-created`、`password-changed`、`password-change-failed`、`upgrade-denied`。日志、页面和接口都**不会**输出口令、令牌或 Cookie 值。
 - **每台设备都要各自登录一次**：口令登录后浏览器记住 `sessionMaxAgeDays` 天。手机、平板、第二台电脑，以及以前靠令牌 URL 配对的桌面端都一样；旧设备停在过期页面上会反复提示连接被拒，在那台设备登录一次（或关掉旧页面）即可。口令最短 8 位。
-- 会话是无状态的签名 Cookie：**改密会让所有设备立即下线**；`/dsh-https/auth/logout` 会同时清掉核心的 `dsh-auth-*` Cookie。
+- 会话是无状态的签名 Cookie：**改密会让所有设备立即下线**；命令行 `provision-auth.mjs` 的改密/轮换/清除也一样，运行中的插件会在几秒内读取新的会话密钥并让旧会话失效（不需要重启）。`/dsh-https/auth/logout` 会同时清掉核心的 `dsh-auth-*` Cookie。
 
 ### 监听与上游
 
@@ -366,7 +366,7 @@ CLI 形式容易踩坑：`dsh --profile <name> web …` 会报 `too many argumen
 | 某台设备一直"连接被拒" | 那台设备还没有会话：在它上面用口令登录一次，或关掉它的旧页面（审计里表现为连续 `upgrade-denied`） |
 | 担心上游被绕过 | `ss -ltnp \| grep <upstream.port>` 必须只见 `127.0.0.1`；对外只暴露插件那个端口 |
 | `/dsh-https/ca.crt` 返回 503 | `files`/`acme` 模式下没有本地 CA，属正常 |
-| 忘了口令 | 重设：把想用的口令写进文件，再跑 `node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https" --password-file <该文件>`（会轮换会话密钥，所有设备下线）；或 `--clear` 删掉口令回到"一次性口令首次设置" |
+| 忘了口令 | 重设：把想用的口令写进文件，再跑 `node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https" --password-file <该文件>`（会轮换会话密钥，运行中的插件几秒内生效，所有设备下线）；或 `--clear` 删掉口令并轮换密钥，回到"一次性口令首次设置"，旧会话同样失效 |
 | 状态到底开没开 | 设置页「HTTPS 接入」卡片，或登录后 `GET /api/dsh-https/status` 看 `auth` 字段 |
 
 ## License

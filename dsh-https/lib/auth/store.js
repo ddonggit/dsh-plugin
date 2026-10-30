@@ -54,6 +54,21 @@ export class AuthStore {
     return this.secret;
   }
 
+  /**
+   * Pick up a secret rotated by another process (`provision-auth.mjs`), so a
+   * CLI password reset also kicks the browsers the running plugin still trusts.
+   * Returns true only when the cached secret actually changed.
+   */
+  async refreshSecret() {
+    // Compare the value, not the mtime: some filesystems give two writes in
+    // the same tick an identical timestamp, which would silently ignore a
+    // rotation. The file is tiny, so re-reading it every few seconds is cheap.
+    const value = (await readIfExists(this.secretFile))?.toString('utf8').trim() || '';
+    if (!value || value === this.secret) return false;
+    this.secret = value;
+    return true;
+  }
+
   async readOrCreateSecret() {
     if (this.secret) return this.secret;
     const existing = await readIfExists(this.secretFile);
@@ -93,6 +108,9 @@ export class AuthStore {
 
   async clearPassword() {
     await removeIfExists(this.passwordFile);
+    // Clearing the password must also revoke the sessions it protected:
+    // otherwise a stolen cookie keeps working even after a restart.
+    await this.rotateSecret();
   }
 
   async ensureSetupToken() {

@@ -1,6 +1,6 @@
 {
   "name": "dsh-https",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "HTTPS entry for DSH Web: TLS termination, reverse proxy and an optional login gate, plus ACME (Tencent DNS-01) and a local CA.",
   "main": "lib/index.js",

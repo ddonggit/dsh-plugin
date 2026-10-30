@@ -120,6 +120,27 @@ async function readForm(req) {
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
+/**
+ * Browser-facing origin for the core launch-token redirect. This listener
+ * always terminates TLS, so the scheme is https regardless of the upstream
+ * protocol; the Host header is accepted only as a bare authority. Returning
+ * null makes the caller fall back to proxying the request instead of handing a
+ * `?token=` URL to an unexpected host or over plaintext.
+ */
+export function browserBaseFromHost(host) {
+  const text = String(host ?? '').trim();
+  if (!text) return null;
+  let parsed;
+  try {
+    parsed = new URL(`https://${text}/`);
+  } catch {
+    return null;
+  }
+  if (!parsed.host || parsed.username || parsed.password) return null;
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
+  return parsed.origin;
+}
+
 export function createAuthGate({ config, store, logger = console, connection = null }) {
   const cfg = config.auth;
   const limiter = new RateLimiter({ limit: cfg.rateLimitPerMinute });
@@ -169,8 +190,9 @@ export function createAuthGate({ config, store, logger = console, connection = n
 
   function launchUrl(req) {
     if (!mintAvailable()) return null;
+    const base = browserBaseFromHost(req.headers.host);
+    if (!base) return null;
     try {
-      const base = `${upstreamScheme()}//${req.headers.host || `127.0.0.1:${config.upstream.port}`}`;
       const value = connection.authenticatedUrl(base);
       if (typeof value !== 'string' || !value) return null;
       const parsed = new URL(value, base);

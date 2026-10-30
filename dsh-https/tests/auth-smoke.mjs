@@ -196,6 +196,14 @@ check(
 const loginPage = await request('/dsh-https/auth/login', { headers: { host: `localhost:${port}` } });
 check('login page renders', loginPage.status === 200 && loginPage.body.includes('访问密码'), `got ${loginPage.status}`);
 check('login page CSP', /default-src 'none'/.test(String(loginPage.headers['content-security-policy'] || '')));
+const craftedNext = await request('/dsh-https/auth/login?next=%2Fa%2F..%2F%2Fevil.example', {
+  headers: { host: `localhost:${port}` },
+});
+check(
+  'crafted next cannot become a protocol-relative redirect',
+  craftedNext.status === 200 && !craftedNext.body.includes('value="//evil.example"'),
+  craftedNext.body.includes('value="//evil.example"') ? 'unsafe next leaked into the form' : `got ${craftedNext.status}`,
+);
 check('public path /dsh-https/ca.crt is proxied, not gated', (await request('/dsh-https/ca.crt', { headers: { host: `localhost:${port}` } })).status === 200);
 
 // 3. Login: wrong password refused, right password mints both cookies.

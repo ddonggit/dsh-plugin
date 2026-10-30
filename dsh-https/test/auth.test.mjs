@@ -24,7 +24,7 @@ import {
   verifySession,
 } from '../lib/auth/core.js';
 import { AuthStore } from '../lib/auth/store.js';
-import { createAuthGate } from '../lib/auth/gate.js';
+import { browserBaseFromHost, createAuthGate } from '../lib/auth/gate.js';
 import { normalizeConfig } from '../lib/config.js';
 
 const scrypt = promisify(scryptCb);
@@ -81,6 +81,11 @@ test('sanitizeNext keeps same-origin paths only and drops tokens', () => {
   for (const bad of ['//evil.example', 'https://evil.example', '/\\evil', '/a\\b', 'a/b', '', 'javascript:alert(1)']) {
     assert.equal(sanitizeNext(bad), '/', `expected fallback for ${bad}`);
   }
+  // Normalisation used to turn these into a protocol-relative `//evil.example`.
+  for (const crafted of ['/a/..//evil.example', '/a/../..//evil.example', '/%2e%2e//evil.example', '/a/..//evil.example?x=1']) {
+    assert.equal(sanitizeNext(crafted), '/', `expected fallback for ${crafted}`);
+  }
+  assert.equal(sanitizeNext('/a/../b'), '/b');
   assert.equal(sanitizeNext('/\u0000x'), '/');
   assert.equal(sanitizeNext(`/${'a'.repeat(600)}`), '/');
   assert.equal(sanitizeNext(null, '/dashboard'), '/dashboard');
@@ -184,6 +189,33 @@ test('AuthStore writes 0600 state, verifies logins and rotates sessions', async 
   const nextToken = await store.ensureSetupToken();
   assert.ok(nextToken.length > 10);
   assert.notEqual(nextToken, token);
+});
+
+test('AuthStore picks up a secret rotated by the CLI (password reset / clear)', async () => {
+  const dir = tempDir('store-cli');
+  const plugin = new AuthStore({ dir, logger: { warn() {} } });
+  await plugin.prime();
+  await plugin.setPassword('first-long-password');
+  const oldToken = signSession({ sid: 'sid-old', exp: Date.now() + 60_000 }, plugin.cachedSecret());
+
+  // This is the provision-auth.mjs process: a second store on the same dir.
+  const cli = new AuthStore({ dir, logger: { warn() {} } });
+  await cli.prime();
+  assert.equal(await plugin.refreshSecret(), false, 'nothing changed yet');
+  await cli.setPassword('second-long-password');
+  assert.equal(await plugin.refreshSecret(), true, 'the running plugin sees the new secret');
+  assert.equal(verifySession(oldToken, plugin.cachedSecret()), null, 'the old session is revoked without a restart');
+
+  // A rotation performed by --clear must survive a plugin restart too, which is
+  // what the old `clearPassword()` (hash only) failed to do.
+  const restart = new AuthStore({ dir, logger: { warn() {} } });
+  await restart.prime();
+  const liveToken = signSession({ sid: 'sid-live', exp: Date.now() + 60_000 }, restart.cachedSecret());
+  assert.ok(verifySession(liveToken, restart.cachedSecret()));
+  await cli.clearPassword();
+  assert.equal(await restart.refreshSecret(), true, '--clear rotates the secret');
+  assert.equal(await restart.readPasswordHash(), null);
+  assert.equal(verifySession(liveToken, restart.cachedSecret()), null, 'sessions die even after a restart');
 });
 
 test('AuthStore audit log uses a stable pseudonym and never the raw address', async () => {
@@ -352,7 +384,7 @@ test('gate: with a mint available the launch token is never kept in the URL', as
   assert.equal(handled, true);
   await waitEnded(bounced, 3000);
   assert.equal(bounced.statusCode, 302);
-  assert.match(bounced.headers.location, /^http:\/\/api\.example\.test:3000\/\?tok/);
+  assert.match(bounced.headers.location, /^https:\/\/api\.example\.test:3000\/\?tok/);
   assert.match(bounced.headers.location, /LAUNCH-VALUE/);
 
   // The core's own token exchange always passes through untouched.
@@ -365,6 +397,30 @@ test('gate: with a mint available the launch token is never kept in the URL', as
     ),
     false,
   );
+
+  // A Host header that is not a bare authority never receives the launch token.
+  const badHost = makeResponse();
+  let badHostProceeded = false;
+  assert.equal(
+    gate.handleRequest(
+      makeRequest({ url: '/app', headers: { cookie: `${SESSION_COOKIE}=${token}`, host: 'evil.example/path' } }),
+      badHost,
+      () => { badHostProceeded = true; },
+    ),
+    true,
+  );
+  const deadline = Date.now() + 3000;
+  while (!badHostProceeded && Date.now() < deadline) await sleep(10);
+  assert.equal(badHostProceeded, true, 'falls back to proxying instead of an invalid host');
+  assert.equal(badHost.headers.location, undefined);
+});
+
+test('browser launch base is always https and only accepts a bare authority', () => {
+  assert.equal(browserBaseFromHost('api.example.test:3000'), 'https://api.example.test:3000');
+  assert.equal(browserBaseFromHost('[::1]:3000'), 'https://[::1]:3000');
+  for (const bad of ['', '   ', 'evil.example/path', 'user@evil.example', 'http://evil.example', 'evil.example?x=1', 'a b']) {
+    assert.equal(browserBaseFromHost(bad), null, `expected null for ${bad}`);
+  }
 });
 
 test('gate: non-GET without a session gets JSON 401, WebSocket upgrades are refused', async () => {

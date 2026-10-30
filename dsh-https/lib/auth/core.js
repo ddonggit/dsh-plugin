@@ -161,7 +161,11 @@ export function sanitizeNext(value, fallback = '/') {
     const parsed = new URL(raw, 'http://placeholder.local');
     parsed.searchParams.delete('token');
     const search = parsed.searchParams.toString();
-    return `${parsed.pathname}${search ? `?${search}` : ''}${parsed.hash}` || fallback;
+    // URL normalisation can turn a safe-looking input into a protocol-relative
+    // one (`/a/..//evil.example` → `//evil.example`), so check the result too.
+    const pathname = parsed.pathname;
+    if (!pathname.startsWith('/') || pathname.startsWith('//')) return fallback;
+    return `${pathname}${search ? `?${search}` : ''}${parsed.hash}` || fallback;
   } catch {
     return fallback;
   }

@@ -227,7 +227,12 @@ export class HttpsProxyServer {
         // may also call the continuation itself when it changes its mind.
         if (this.auth.handleRequest(req, res, () => this.forwardRequest(req, res)) === true) return;
       } catch (error) {
-        this.logger.error?.(`[dsh-https] 登录闸门异常：${sanitizeError(error)}`);
+        // Fail closed: a broken gate must never turn into an unauthenticated
+        // pass-through to the upstream.
+        this.logger.error?.(`[dsh-https] 登录闸门异常，已拒绝请求：${sanitizeError(error)}`);
+        if (!res.headersSent) sendText(res, 500, 'Internal Server Error');
+        else if (!res.writableEnded) res.end();
+        return;
       }
     }
     this.forwardRequest(req, res);
@@ -290,7 +295,15 @@ export class HttpsProxyServer {
       try {
         if (this.auth.handleUpgrade(req, socket, head, () => this.forwardUpgrade(req, socket, head)) === true) return;
       } catch (error) {
-        this.logger.error?.(`[dsh-https] 登录闸门异常（WebSocket）：${sanitizeError(error)}`);
+        // Same fail-closed rule as handleRequest(): refuse the upgrade instead
+        // of forwarding an unauthenticated handshake.
+        this.logger.error?.(`[dsh-https] 登录闸门异常（WebSocket），已拒绝连接：${sanitizeError(error)}`);
+        try {
+          socket.end('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+        } catch {
+          // Socket already gone.
+        }
+        return;
       }
     }
     this.forwardUpgrade(req, socket, head);

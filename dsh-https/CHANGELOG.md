@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- 安全修复：`?next=` 在 URL 归一化后再校验一次 pathname，堵住 `/a/..//evil.com` 这类绕过（归一化后会变成协议相对地址 `//evil.com`）造成的开放重定向。
+- 安全修复：登录闸门自身抛异常时改为直接拒绝（HTTP 500、WebSocket 1006/500 响应），不再落回未认证转发；符合“开启鉴权即 fail-closed”。
+- 安全修复：换不到核心 Cookie 时的回退跳转一律使用 `https://`，并只接受裸 `Host`（拒绝带路径/用户信息/查询串的伪造 Host），避免把 `?token=` 明文泄露或发到错误主机。
+- `provision-auth.mjs` 的改密 / `--rotate-only` / `--clear` 现在会被运行中的插件在几秒内自动感知（会话密钥热加载，无需重启 DSH）；`--clear` 也会真正轮换会话密钥，删口令后旧会话立即失效。
+- 新增 `test/https-server.test.mjs`（闸门异常 fail-closed）并补充开放重定向、Host 校验、CLI 轮换的回归测试；`auth-smoke` 增加构造 `next` 的断言。
+
 ## 0.3.0
 
 - 新增**登录鉴权闸门**（`auth.enabled`，默认关闭，保持 0.2.0 行为）：在插件自己的监听端口上拦下所有未登录请求——插件自有路由（如 billion-context 的 `/__bili/*`）、`/plugins/*`、`/api/*`、WebSocket 升级、静态资源一并覆盖；未登录时页面请求 302 到登录页，非 GET 的接口请求返回 401 JSON。

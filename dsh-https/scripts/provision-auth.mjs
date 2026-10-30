@@ -16,7 +16,8 @@
 //                           neither --password-file nor --stdin is given)
 //   --rotate-only           keep the current password, only rotate the session
 //                           secret (logs every browser out)
-//   --clear                 delete password.hash: back to first-run setup
+//   --clear                 delete password.hash and rotate the session secret:
+//                           back to first-run setup, old sessions revoked
 //   --status                show what exists; never prints secrets
 //   --quiet                 only print the data dir
 
@@ -133,7 +134,12 @@ async function main() {
 
   if (options.clear) {
     await store.clearPassword();
-    process.stdout.write(`已删除密码文件 ${store.passwordFile}；下次打开入口会回到「一次性口令首次设置」流程。\n`);
+    process.stdout.write(
+      [
+        `已删除密码文件 ${store.passwordFile}；下次打开入口会回到「一次性口令首次设置」流程。`,
+        '会话密钥已轮换：运行中的插件会在几秒内让所有已登录浏览器失效（无需重启 DSH）。',
+      ].join('\n') + '\n',
+    );
     return;
   }
 
@@ -144,7 +150,7 @@ async function main() {
       process.exit(1);
     }
     await store.rotateSecret();
-    process.stdout.write('已轮换会话签名密钥：所有已登录浏览器都会下线，密码不变。\n');
+    process.stdout.write('已轮换会话签名密钥：运行中的插件会在几秒内让所有已登录浏览器失效，密码不变。\n');
     return;
   }
 
@@ -180,7 +186,7 @@ async function main() {
       [
         `访问密码已写入 ${store.passwordFile}（0600）`,
         fromFile && !options.print ? `密码来自 ${options.passwordFile}` : `明文保存在 ${options.passwordFile}（0600，可读完即删）`,
-        '所有已登录浏览器已下线。',
+        '会话密钥已轮换：运行中的插件会在几秒内让所有已登录浏览器失效（无需重启 DSH）。',
         '',
       ].join('\n'),
     );
@@ -194,7 +200,7 @@ async function main() {
       '',
       `    ${password}`,
       '',
-      `密码哈希保存在 ${store.passwordFile}（0600），会话密钥已轮换，所有浏览器已下线。`,
+      `密码哈希保存在 ${store.passwordFile}（0600），会话密钥已轮换，运行中的插件会在几秒内让所有浏览器失效。`,
       '忘记时重新运行本脚本即可重置；也可以用 --password-file <路径> 避免密码出现在终端记录里。',
       '',
     ].join('\n'),

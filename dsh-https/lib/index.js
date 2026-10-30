@@ -22,7 +22,7 @@ import { isPlainObject, sleep, sanitizeError, statMode } from './util.js';
 export const name = 'dsh-https';
 export const inject = ['connection', 'webServer'];
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const START_RETRIES = 6;
 
 function makeLogger(ctx) {
@@ -377,9 +377,37 @@ export function apply(ctx, rawConfig) {
   }
 
   let watchTimer = null;
+  let secretTimer = null;
+  let lastSecretWarning = '';
   let upstreamTimer = null;
   let disposed = false;
   let startPromise = null;
+
+  // `provision-auth.mjs` runs in another process and only writes the secret
+  // file. Poll it so a CLI password reset/rotation also takes effect in the
+  // running plugin instead of waiting for a DSH restart.
+  const stopSecretWatcher = () => {
+    if (secretTimer) clearInterval(secretTimer);
+    secretTimer = null;
+  };
+  const startSecretWatcher = () => {
+    if (secretTimer) return;
+    secretTimer = setInterval(() => {
+      void authStore
+        .refreshSecret()
+        .then((rotated) => {
+          lastSecretWarning = '';
+          if (rotated) logger.info?.('[dsh-https] 会话密钥已更新，已登录浏览器将在下一次请求时失效');
+        })
+        .catch((error) => {
+          const message = sanitizeError(error);
+          if (message === lastSecretWarning) return;
+          lastSecretWarning = message;
+          logger.warn?.(`[dsh-https] 读取会话密钥失败：${message}`);
+        });
+    }, 2000);
+    secretTimer.unref?.();
+  };
 
   // Hot-reload of the certificate files. It runs only in files mode; a runtime
   // switch to files calls it again once the new paths are in place.
@@ -433,6 +461,7 @@ export function apply(ctx, rawConfig) {
     } catch (error) {
       addWarning(`登录鉴权状态初始化失败：${sanitizeError(error)}`);
     }
+    if (config.auth.enabled) startSecretWatcher();
     const server = new HttpsProxyServer({
       config,
       certStore,
@@ -555,6 +584,7 @@ export function apply(ctx, rawConfig) {
     if (disposed) return;
     disposed = true;
     stopFileWatcher();
+    stopSecretWatcher();
     if (upstreamTimer) clearInterval(upstreamTimer);
     upstreamTimer = null;
     state.acme?.stop?.();
