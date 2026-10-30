@@ -6,7 +6,7 @@
 
 ```
 ① 并存（默认）：DSH 自己的入口照旧，插件另开一个 HTTPS 端口
-浏览器 ──https:3088──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:3081──▶ DSH Web（自带 HTTP 入口继续可用）
+浏览器 ──https:3088──▶ dsh-https（TLS 终止 + 登录鉴权）──http:127.0.0.1:<DSH 端口>──▶ DSH Web（DSH 自己的入口照旧）
                      └─ 本地 CA / ACME 证书、热加载、SNI
 
 ② 作为唯一入口：插件接管原来的对外端口，DSH 退回回环明文
@@ -18,7 +18,7 @@
 
 ## 能力
 
-- **独立入口**：默认 `https://<host>:3088/`，HTTP 3080 完全不动。
+- **独立入口**：默认在 `0.0.0.0:3088` 另开一个 HTTPS 端口，DSH 自己的监听完全不动；也可以让插件接管原来对外的端口（见「[作为唯一入口部署](#作为唯一入口部署)」）。
 - **三种证书来源**：本地 CA、已有 PEM 文件、Let's Encrypt ACME（腾讯云 DNSPod DNS-01）。
 - **登录鉴权（可选）**：`auth.enabled: true` 时，未登录访问**任何路径**（含插件自己注册的路由、`/plugins/*`、`/api/*`、WebSocket）都会被拦到登录页；登录后由插件在服务端完成 DSH 核心的令牌交换，不用再带 `?token=`。口令用 scrypt 加盐，会话是 HMAC 签名 Cookie，改密即全员下线。
 - **热加载**：`files` 模式按 mtime 轮询；ACME 签发后通过 `setSecureContext` 直接换证书，不关闭监听端口。
@@ -66,7 +66,7 @@ plugin_manager action=remove_bundle target=dsh-https
 dsh plugin --profile web remove dsh-https
 ```
 
-卸载会移除 Loader 条目并关闭 HTTPS 监听；3080/3081 不受影响。证书、CA 与**登录鉴权数据**（`<dataDir>/auth/`：口令哈希、会话密钥、一次性口令、审计日志）默认保留在 `$DSH_HOME/https`；要彻底清理（或忘记口令后重置）时手动删除该目录即可。**删除鉴权目录等于清掉登录口令**，之后回到"首次设置"流程。
+卸载会移除 Loader 条目并关闭插件自己的 HTTPS 监听，DSH 的监听不受影响。证书、CA 与**登录鉴权数据**（`<dataDir>/auth/`：口令哈希、会话密钥、一次性口令、审计日志）默认保留在 `$DSH_HOME/https`；要彻底清理（或忘记口令后重置）时手动删除该目录即可。**删除鉴权目录等于清掉登录口令**，之后回到"首次设置"流程。
 
 ## 快速使用
 
@@ -95,7 +95,7 @@ dsh plugin --profile web remove dsh-https
 | 2. 插件监听 | `listen.host` / `listen.port` = 原来对外监听的地址与端口。云主机上要填云 NAT / EIP 指向的那张网卡的地址，**对外监听不能用 `127.0.0.1`** |
 | 3. DSH 本体 | 启动参数改成 `--host 127.0.0.1 --port <另一个端口>`，**删掉** `--tls-cert/--tls-key`，**保留** `--public-url https://<域名>:<对外端口>/` 与 `--trusted-host <域名>`（否则核心的 Host 栅栏和认证 URL 会错） |
 | 4. 端口约束 | `listen.port` 必须不等于 `upstream.port`（配置校验会直接拒绝相同端口） |
-| 5. 证书续期 | 外部工具续期后插件最多 `watchIntervalSec` 秒热加载；此时应停用「证书变了就重启 DSH」的定时器（例如 DSH 自带的 `dsh-web-cert-check.timer`） |
+| 5. 证书续期 | 外部工具（acme.sh / certbot）续期后插件最多 `watchIntervalSec` 秒热加载；此时应停用「证书一变就重启 DSH」的定时器（本机是自建的 `/root/.dsh/bin/dsh-web-cert-check.timer`） |
 | 6. 登录鉴权 | `auth.enabled: true`，并按「[登录鉴权](#登录鉴权)」预置口令 |
 | 7. 收尾 | 确认上游端口只监听回环（`ss -ltnp \| grep <upstream.port>` 只见 `127.0.0.1`），每台设备用口令登录一次 |
 
@@ -165,7 +165,7 @@ node scripts/provision-auth.mjs --rotate-only
 node scripts/provision-auth.mjs --clear
 ```
 
-**忘记密码**：重新运行 `provision-auth.mjs`（会重设密码并让所有已登录浏览器下线）。**临时关闭鉴权**：把 `auth.enabled` 改成 `false` 并重启 DSH Web；`<dataDir>/auth/password.hash` 不存在时等于回到首次设置流程。
+**忘记密码**：`node scripts/provision-auth.mjs --data-dir "$DSH_HOME/https"` 会生成一个新口令（**只在终端显示这一次**）并让所有已登录浏览器下线；想自己指定就用 `--stdin` 或 `--password-file <写着你想要口令的文件>`。**临时关闭鉴权**：把 `auth.enabled` 改成 `false` 并重启 DSH Web。`<dataDir>/auth/password.hash` 不存在时等于回到首次设置流程（需要 `<dataDir>/auth/setup-token` 里的一次性口令）。
 
 **登录页与路由**（都在插件自己的命名空间下，未登录也能访问登录/登出页）：
 
@@ -191,7 +191,7 @@ node scripts/provision-auth.mjs --clear
 | `listen.host` | `0.0.0.0` | HTTPS 监听地址；`0.0.0.0` 暴露到局域网 |
 | `listen.port` | `3088` | HTTPS 端口，不能等于上游端口 |
 | `upstream.host` | `127.0.0.1` | DSH 后端地址 |
-| `upstream.port` | `webServer.port`（通常 3081） | DSH 后端端口；留空时自动取 DSH Web 实际监听端口（插件加载时监听尚未绑定也没关系，启动时会重新读取） |
+| `upstream.port` | `webServer.port` | DSH 后端端口；留空时自动取 DSH Web 实际监听端口（插件加载时监听尚未绑定也没关系，启动时会重新读取）；确实取不到时回落到 3081 |
 | `upstream.protocol` | `http` | 上游协议 |
 | `proxy.addSecureCookie` | `true` | 给响应 Cookie 补 `Secure` |
 | `proxy.keepAlive` | `true` | 到上游启用 keep-alive |
@@ -289,16 +289,16 @@ ACME 行为：
 
 公开（不需要登录，便于装 CA）：
 
-- `GET /dsh-https/`：CA 安装引导页（同时也是插件状态页）。
+- `GET /dsh-https/`：CA 安装引导页（纯静态说明，不含状态数据）。
 - `GET /dsh-https/ca.crt`：下载本地根证书。**只有启用了本地 CA（`localCa.enabled: true`）时可用**；用 `files`/`acme` 证书时该地址返回 `503 本地 CA 尚未就绪`，属正常，页面上那个下载链接可以忽略。
 
 ## 安全说明
 
 - 插件只做 TLS 终止、反向代理和（可选的）入口登录鉴权，不做 HSTS、不强制跳转 HTTP→HTTPS。
-- **登录鉴权是访问控制，不是安全边界**：它挡的是"能访问入口但不知道口令"的人。口令只以 scrypt 哈希落盘，会话 Cookie 是 HMAC 签名且 HttpOnly + SameSite=Lax；但过程内存级限流重启即清零，会话是无状态的（登出只清 Cookie，Cookie 泄露只能靠改密止损）。
+- **登录鉴权是访问控制，不是安全边界**：它挡的是"能访问入口但不知道口令"的人。口令只以 scrypt 哈希落盘，会话 Cookie 是 HMAC 签名且 HttpOnly + SameSite=Lax；但过程内存级限流重启即清零，会话是无状态的（登出只清 Cookie，Cookie 泄露只能靠改密止损）。**单口令体系**：没有多用户、没有二次验证、没有按设备吊销（只有"改密让全员下线"）。
 - 打开鉴权后，**未登录时所有路径都被拦**，包括插件自己注册的路由（如 `/__bili/*`）、`/plugins/*` 与 WebSocket；只有 `/dsh-https`、`/dsh-https/`、`/dsh-https/ca.crt` 和你在 `auth.publicPaths` 里额外指定的路径例外。**不要把 `/api*` 之类的路径放进 `publicPaths`**，那等于把 DSH 的接口重新暴露出去。
 - 上游是明文 HTTP 且应只监听回环：插件自己不添加 `x-forwarded-*`，客户端的转发头一律剥除，DSH 始终按明文语义运行；请确保 DSH 后端（`upstream.host/port`）只绑 `127.0.0.1`，否则同机其它进程可以绕过登录直接访问它。
-- 3080/3081 等 HTTP 入口不受本插件保护；启用登录鉴权后，应在网络层关闭这些端口，或至少不要让它们暴露到公网。
+- 插件只保护**它自己监听的那个端口**。DSH 自己的监听（`--host` / `--port` 指定的那个地址，无论 HTTP 还是另一个 HTTPS）不在保护范围内；启用登录鉴权后请让它只绑回环（`--host 127.0.0.1`），不要把它另暴露到公网。
 - 证书私钥、ACME 账号密钥、DNS 凭据、访问口令、会话 Cookie 和一次性口令都不会被写入日志；日志只输出路径、域名和脱敏错误。审计日志记录事件、结果与 IP 的 HMAC 假名，不记录口令。
 
 ## 开发与验证

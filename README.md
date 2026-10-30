@@ -104,6 +104,7 @@ node "$DSH_HOME/skills/dsh-plugin-dev/scripts/check-bundle.mjs" .
 ## 已知限制
 
 - `dsh-restart` 的 Windows 直接重启未验证；Linux（有/无 systemd）已实测，macOS 依赖 `lsof`/`ps` 尽力支持。
+- `dsh-https` 的登录鉴权是**单口令**访问控制：没有多用户、没有二次验证，只能靠"改密让全员下线"；开启后必须让 DSH 自己的监听只绑回环（`--host 127.0.0.1`），否则同机进程或另一个入口可以绕过闸门。
 - `dsh-running-sessions/design/` 只保留可重放的 HTML 原型；真实环境截图含个人会话标题，未纳入仓库。
 - 各插件以本地自用为主，浏览器半的视觉与交互多靠人工验证，未做自动化 UI 测试。
 
