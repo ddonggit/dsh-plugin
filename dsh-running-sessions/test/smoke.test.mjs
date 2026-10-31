@@ -213,10 +213,12 @@ const popText = textOf(pops[0])
 for (const label of ['3 个 · 2 个工作区', '待我处理', '运行中', '刚完成', 'pi-agent-web · 等你确认', 'pi-agent-web · 已完成']) {
   assert.ok(popText.includes(label), `弹层缺少「${label}」：${popText}`)
 }
-// 页脚那句「非运行会话保留 N 分钟」是说明文案，不算行内冗余；只看行标题/副标题。
+// 页脚那句「刚完成会话保留 N 分钟」是说明文案，不算行内冗余；只看行标题/副标题。
 for (const excluded of ['老会话', '新会话', '归档的', '子代理']) {
   assert.ok(!popText.includes(excluded), `弹层不该出现「${excluded}」`)
 }
+// 待我处理 / 运行中不因超时消失，页脚文案不能把它们也算进保留窗口；默认窗口 30。
+assert.ok(popText.includes('刚完成会话保留 30 分钟'), `页脚窗口文案：${popText}`)
 
 const rows = findNodes(openTree, byClass('rs-row'))
 assert.equal(rows.length, 3, '待我处理 + 运行中 + 刚完成 各一行')
@@ -280,6 +282,54 @@ switches3[1].props.onClick()
 assert.ok(registered.has('sidebar.panellist:running-sessions'), '侧栏入口恢复')
 assert.ok(registered.has('main:running-sessions'), '整页面板恢复')
 assert.ok(registered.has('conversation.session.header.utilities:running-sessions'), '计数片恢复')
+
+/* ---------------- 回归：缺时间戳的运行中会话 ---------------- */
+// 运行中的会话没有 updatedAt 时，行尾时间不该是空白；也不能因此被窗口淘汰。
+sessions.byId['s-run'].updatedAt = undefined
+stateSlots = { 2: true }
+stateIndex = 0
+{
+  const tree = render(chip({ ctx }))
+  const row = findNodes(tree, byClass('rs-row')).find((node) => textOf(node).includes('批量校对 README'))
+  assert.ok(row, '缺 updatedAt 的运行中会话仍应出现')
+  const time = findNodes(row, byClass('rs-time')).map(textOf).join('')
+  assert.notEqual(time, '', '缺 updatedAt 时不能渲染空的时间列')
+}
+sessions.byId['s-run'].updatedAt = now - 3 * MINUTE
+
+/* ---------------- 回归：未来时间戳 ---------------- */
+// 时钟跳变把 updatedAt 推到未来时，非运行会话不该永远“新鲜”。
+sessions.byId['s-done'].updatedAt = now + 900 * MINUTE
+stateSlots = { 2: true }
+stateIndex = 0
+{
+  const text = textOf(render(chip({ ctx })))
+  assert.ok(!text.includes('翻译 manifest'), '远离窗口的未来时间戳应已淡出')
+}
+sessions.byId['s-done'].updatedAt = now - 12 * MINUTE
+
+/* ---------------- 回归：工作区计数只看真实工作区 ---------------- */
+// 两个不同工作区里的会话，cwd 的 basename 相同，也不能被算成 1 个工作区。
+workspaces.items = [
+  { workspaceId: 'w1', title: 'dsh-0.2.1-rc.2', path: '/work/a', sessionIds: ['s-run', 's-stale'] },
+  { workspaceId: 'w2', title: 'pi-agent-web', path: '/work/b', sessionIds: ['s-wait', 's-done'] },
+]
+stateSlots = { 2: true }
+stateIndex = 0
+{
+  const text = textOf(render(chip({ ctx })))
+  assert.ok(text.includes('2 个工作区'), `按真实工作区去重应为 2：${text}`)
+}
+// 完全没有工作区归属时，cwd 目录名不能冒充工作区参与计数。
+const savedItems = workspaces.items
+workspaces.items = []
+stateSlots = { 2: true }
+stateIndex = 0
+{
+  const text = textOf(render(chip({ ctx })))
+  assert.ok(!/\d+ 个工作区/.test(text), `无工作区归属时不该出现「N 个工作区」：${text}`)
+}
+workspaces.items = savedItems
 
 /* ---------------- 清理 ---------------- */
 for (const cleanup of cleanups) cleanup()

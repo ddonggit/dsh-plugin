@@ -30,10 +30,10 @@
 
 - 分组固定顺序：待我处理 → 运行中 → 刚完成；组内按最近活动排。
 - 等你确认的会话只计一次「待确认」，不重复计进「运行中」。
-- **运行中的会话永不因超时消失**；只有非运行（刚完成）的按 `updatedAt` 淡出，默认 30 分钟，弹层底部可切 15/30/60/120，存 localStorage。
+- **运行中和待我处理的会话永不因超时消失**；只有「刚完成」的按 `updatedAt` 淡出，默认 30 分钟，弹层底部可切 15/30/60/120，存 localStorage。
 - 点任意一行 `openSession` 直达，不经过工作区。
 - 计数片：`∿ N 运行中 │ ● M 待确认`，没有等待时第二段不出现；全空闲变虚线「无进行中」（仍可点开看窗口内刚结束的）。
-- 窄屏（<560px）计数片只留 `∿ N`，靠 `aria-label` 说明。
+- 窄屏（<560px）计数片只留 `∿ N`（全空闲时仍显示「无进行中」），靠 `aria-label` 说明。
 - 过滤 `blank`、归档、`origin: 'subagent'` 的会话。
 
 ## 数据来源
@@ -47,14 +47,14 @@
 
 ## 配置
 
-`cordis.patch.yml` 的 `activeWindowMinutes`（分钟）为默认窗口，客户端可临时覆盖。
+没有需要改的配置文件。时间窗口只存在本浏览器（localStorage），默认 30 分钟，弹层底部「切换」即可改。
 
 ## 开发
 
 ```bash
 node --check lib/client.js
 node test/smoke.test.mjs                 # 无浏览器、无真 React
-node "$DSH_HOME/skills/dsh-plugin-dev/scripts/check-bundle.mjs" .
+node "$DSH_HOME/skills/dsh-plugin-dev/scripts/check-bundle.mjs" .   # 可选，需先装 dsh-plugin-dev skill
 ```
 
 改 `lib/client.js` 后刷新页面即可（HMR 也会带）；改 `lib/index.js` 需要重启 `dsh-web.service`。

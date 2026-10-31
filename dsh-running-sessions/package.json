@@ -1,6 +1,6 @@
 {
   "name": "dsh-running-sessions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "跨工作区汇总正在运行 / 等待你处理 / 刚完成的会话，一个入口直达。",
   "main": "lib/index.js",

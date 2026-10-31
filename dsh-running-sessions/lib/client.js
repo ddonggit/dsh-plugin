@@ -24,8 +24,8 @@ window.__ModuleLoader__.load({
     }
     const MINUTE = 60_000
     const WINDOW_CHOICES = [15, 30, 60, 120]
-    /** 默认窗口：来自 cordis.patch.yml 的 activeWindowMinutes，被 localStorage 覆盖。 */
-    let configWindow = 30
+    /** 默认窗口：本浏览器没有选过时间窗口时用它。 */
+    const DEFAULT_WINDOW = 30
 
     /** 图标路径：波形。"正在活动"里唯一不歧义的形状，18px 仍清楚。 */
     const WAVE = 'M2.2 12h3.9l2.3-6.6 4 13 2.2-6.4h5.2'
@@ -194,7 +194,7 @@ window.__ModuleLoader__.load({
       } catch {
         // 存储不可用时退回默认窗口
       }
-      return WINDOW_CHOICES.includes(configWindow) ? configWindow : 30
+      return DEFAULT_WINDOW
     }
 
     /* ---------- 入口开关：两个键各存各的，默认都开 ---------- */
@@ -264,8 +264,13 @@ window.__ModuleLoader__.load({
       const windowMs = windowMinutes * MINUTE
       const archived = toSet(workspaces?.archivedSessionIds)
       const workspaceName = new Map()
+      /** 会话 → 真实工作区 id，用于「N 个工作区」计数；cwd 目录名不是工作区。 */
+      const workspaceOf = new Map()
       for (const view of workspaces?.items ?? []) {
-        for (const sessionId of view.sessionIds ?? []) workspaceName.set(sessionId, view.title)
+        for (const sessionId of view.sessionIds ?? []) {
+          workspaceName.set(sessionId, view.title)
+          workspaceOf.set(sessionId, view.workspaceId)
+        }
       }
       const entries = []
       for (const id of sessions?.ids ?? []) {
@@ -277,15 +282,19 @@ window.__ModuleLoader__.load({
         const status = statuses?.get?.(id) ?? statuses?.[id]
         const pending = status?.pendingInteraction != null
         const running = row.running === true || status?.running === true
-        const updatedAt = typeof row.updatedAt === 'number' ? row.updatedAt : 0
-        const fresh = now - updatedAt <= windowMs
+        // 缺失时间戳记为 0：运行中的会话仍然保留（不受窗口淘汰），其余视为已淡出。
+        const updatedAt = typeof row.updatedAt === 'number' && Number.isFinite(row.updatedAt) ? row.updatedAt : 0
+        // 取绝对值：时钟跳变可能把 updatedAt 推到未来，单向比较会让它在窗口里永远新鲜。
+        const fresh = updatedAt > 0 && Math.abs(now - updatedAt) <= windowMs
         if (!pending && !running && !fresh) continue
         entries.push({
           id,
           title: row.displayTitle || String(id),
           group: pending ? 'wait' : running ? 'run' : 'done',
           updatedAt,
+          // 归属看它在不在某个工作区的 sessionIds 里；cwd 目录名只是兜底显示，不参与工作区计数。
           workspace: workspaceName.get(id) ?? baseName(row.cwd),
+          workspaceId: workspaceOf.get(id) ?? null,
         })
       }
       entries.sort((a, b) => GROUP_ORDER[a.group] - GROUP_ORDER[b.group] || b.updatedAt - a.updatedAt)
@@ -318,8 +327,9 @@ window.__ModuleLoader__.load({
         () => collect(sessions, statuses, workspaces, windowMinutes, now),
         [sessions, statuses, workspaces, windowMinutes, now],
       )
+      // 只数真实工作区 id：同一个 cwd 目录名可能属于不同工作区，也不能拿目录名冒充工作区。
       const workspaceCount = useMemo(
-        () => new Set(entries.map((entry) => entry.workspace).filter(Boolean)).size,
+        () => new Set(entries.map((entry) => entry.workspaceId).filter((id) => id != null)).size,
         [entries],
       )
       const cycleWindow = useCallback(() => {
@@ -431,7 +441,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'rs-title' }, entry.title),
           h('span', { className: 'rs-sub' }, subtitleOf(entry)),
         ),
-        h('span', { className: 'rs-time' }, entry.updatedAt > 0 ? relativeTime(entry.updatedAt, now) : ''),
+        h('span', { className: 'rs-time' }, entry.updatedAt > 0 ? relativeTime(entry.updatedAt, now) : '—'),
       )
     }
 
@@ -489,7 +499,7 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'rs-foot' },
-        h('span', null, `非运行会话保留 ${feed.windowMinutes} 分钟`),
+        h('span', null, `刚完成会话保留 ${feed.windowMinutes} 分钟`),
         h(
           'button',
           { type: 'button', className: 'rs-win', onClick: feed.cycleWindow, title: '切换时间窗口' },
@@ -700,10 +710,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function apply(ctx, config) {
-      const configured = Number(config?.activeWindowMinutes)
-      if (WINDOW_CHOICES.includes(configured)) configWindow = configured
-
+    function apply(ctx) {
       ctx.effect(() => {
         const previous = document.getElementById(STYLE_ID)
         if (previous?.parentNode) previous.parentNode.removeChild(previous)

@@ -2,7 +2,6 @@
 export const name = 'dsh-running-sessions'
 
 /** Nothing in the Host is required beyond the bundle entry itself. */
-export function apply(ctx, config) {
-  const window = Number(config?.activeWindowMinutes ?? 30)
-  ctx.logger?.debug?.(`[${name}] active window ${window} min`)
+export function apply(ctx) {
+  ctx.logger?.debug?.(`[${name}] loaded`)
 }
