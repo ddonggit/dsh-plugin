@@ -161,6 +161,8 @@ window.__ModuleLoader__.load({
 
       // The Huawei-browser shim (`client.resource-compat.js`). It is inert on a
       // normal URL parser, so this row is the only trace it leaves in the report.
+      // Active, it forwards every resource protocol, so a healed plan preview
+      // shows up here exactly like a healed file preview.
       const compat = deps?.resourceCompat ?? null;
       const compatRead = compat && typeof compat.report === 'function'
         ? attempt(() => compat.report())

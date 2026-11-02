@@ -1421,11 +1421,23 @@ if (inert.report().detail !== 'no (url parser normal)') fail(`inert detail: ${in
 inert.dispose();
 
 // 2. broken parser, provider present: registered under `undefined`, only after
-//    the lookup bridge can answer that key; file addresses forwarded, others
+//    the lookup bridge can answer that key; every address is forwarded to the
+//    provider its own protocol prefix names, and a protocol with no provider is
 //    answered with a failure frame (never a throw).
 const aliasProvider = fakeFileProvider();
+const planProvider = {
+  opened: [],
+  protocol: 'plan',
+  async *open(address, opts) {
+    this.opened.push({ address, opts });
+    yield { ok: true, value: { callId: 'call_1', title: '计划', markdown: '# 计划' } };
+  },
+};
 const registry = {
-  providers: new Map([['file', aliasProvider]]),
+  providers: new Map([
+    ['file', aliasProvider],
+    ['plan', planProvider],
+  ]),
   register(candidate) {
     const { protocol } = candidate;
     if (this.providers.has(protocol)) throw new Error(`resources: protocol "${protocol}" already has a provider`);
@@ -1443,7 +1455,7 @@ const registry = {
 };
 const compat = compatModule.install(compatCtx(registry), { broken: true, pollMs: 5, limitMs: 200 });
 if (!compat.active) fail('compat did not activate with the file provider present');
-if (compat.report().detail !== 'yes · via file provider') fail(`active detail: ${compat.report().detail}`);
+if (compat.report().detail !== 'yes · via protocol provider') fail(`active detail: ${compat.report().detail}`);
 if (!registry.registered) fail('compat registered no alias');
 if (registry.registered?.protocol !== undefined) fail('the alias is not keyed undefined');
 if (!registry.bridgeAtRegister) fail('the alias was registered before providerOf(undefined) answered it');
@@ -1455,12 +1467,27 @@ if (forwarded.length !== 1 || forwarded[0] !== liveFrame) fail('the alias did no
 if (aliasProvider.opened[0]?.address !== sampleAddress || aliasProvider.opened[0]?.opts?.signal !== 'sig') {
   fail('the alias changed the address or dropped the signal');
 }
+// A plan address keys `plan` on a normal parser and `undefined` here; the alias
+// has to reach the plan provider from the address itself, or every submitted
+// plan preview stays on 「计划预览不可用」 on this browser.
+const planAddress = 'dsh-resource://plan/session/s1/call_1';
+const planFrames = [];
+for await (const frame of registry.registered.open(planAddress, { signal: 'plan-sig' })) planFrames.push(frame);
+if (planFrames.length !== 1 || planFrames[0]?.ok !== true) fail('the alias did not forward a plan address');
+if (planFrames[0]?.value?.callId !== 'call_1') fail('the alias dropped the plan frame value');
+if (planProvider.opened[0]?.address !== planAddress || planProvider.opened[0]?.opts?.signal !== 'plan-sig') {
+  fail('the alias changed the plan address or dropped the signal');
+}
+if (aliasProvider.opened.length !== 1) fail('a plan address was forwarded to the file provider');
 const refused = [];
 for await (const frame of registry.registered.open('dsh-resource://workspace/session/s1/home/me/notes.md', {})) {
   refused.push(frame);
 }
-if (refused.length !== 1 || refused[0]?.ok !== false) fail('the alias did not refuse a non-file address');
-if (refused[0]?.error?.code !== 'workspace-file/unsupported-address') fail(`unexpected refusal code: ${refused[0]?.error?.code}`);
+if (refused.length !== 1 || refused[0]?.ok !== false) fail('the alias did not refuse an address without a provider');
+if (refused[0]?.error?.code !== 'resource/unsupported-address') fail(`unexpected refusal code: ${refused[0]?.error?.code}`);
+if (!refused[0]?.error?.message?.includes('dsh-resource://workspace/session/s1/home/me/notes.md')) {
+  fail('the refusal does not name the address it could not serve');
+}
 compat.dispose();
 if (registry.released !== registry.registered) fail('dispose did not release the alias registration');
 if (registry.providerOf(undefined) !== undefined) fail('dispose did not restore providerOf');
@@ -1741,13 +1768,13 @@ stopStuck();
 
 // ---- compat alias in the report ------------------------------------------
 // A record keyed `undefined` (empty URL host) is what the Huawei parser makes of
-// every file address; with the alias active the report explains why that record
-// still reaches the file provider, without turning the conclusion red.
-const activeCompat = { report: () => ({ broken: true, active: true, status: 'active', note: '', detail: 'yes · via file provider' }) };
+// every resource address; with the alias active the report explains why that
+// record still reaches its provider, without turning the conclusion red.
+const activeCompat = { report: () => ({ broken: true, active: true, status: 'active', note: '', detail: 'yes · via protocol provider' }) };
 const noHostAddress = 'dsh-resource:///session/s1/home/me/empty-host.md';
 const stopNoHost = services.resources.source(noHostAddress).subscribe(() => {});
 const withAlias = await diagnostics.collect({ ...cleanDeps, resourceCompat: activeCompat });
-if (!withAlias.text.includes('unparsed alias yes · via file provider')) fail('diagnostics lost the active alias row');
+if (!withAlias.text.includes('unparsed alias yes · via protocol provider')) fail('diagnostics lost the active alias row');
 if (!withAlias.text.includes('protocol no-protocol')) fail('diagnostics did not record the empty-host protocol');
 if (!withAlias.text.includes('note: the compatibility alias took over')) {
   fail('diagnostics did not explain the healed empty-host subscription');

@@ -9,7 +9,7 @@
  *   client.sidebar.js   DOM contract: selectors, sidebar state, gestures
  *   client.deeplink.js  `#session=` / `?session=` routing
  *   client.notify.js    browser notifications, feed catch-up
- *   client.resource-compat.js  the `file` provider under the `undefined` protocol key (Huawei browsers)
+ *   client.resource-compat.js  every resource provider under the `undefined` protocol key (Huawei browsers)
  *   client.forensics.js evidence recorder: resource subscriptions, console, preview failures
  *   client.settings.js  the "任务通知" settings section (loaded on demand)
  *

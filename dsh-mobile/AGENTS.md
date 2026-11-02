@@ -83,7 +83,7 @@ git log -1 --stat
 | `client.back.js` | 手机端全局返回/关闭按钮：body 级浮层，按层退一步 |
 | `client.deeplink.js` | `#session=` / `?session=` 深链 |
 | `client.notify.js` | 浏览器通知、feed 追赶、宿主设置缓存、SW 消息 |
-| `client.resource-compat.js` | 华为浏览器 `file` 协议兼容 |
+| `client.resource-compat.js` | 华为浏览器资源协议兼容：按地址前缀把 file / plan 等转发给官方 provider |
 | `client.forensics.js` | 只读证据记录：资源订阅、console、预览失败 |
 | `client.settings.js` | 「任务通知」设置页（按需加载） |
 | `client.diagnostics.js` | 只读诊断页（按需加载） |
@@ -241,7 +241,7 @@ npm run verify  # check + test
 - 浏览器半的视觉、手势和真机通知主要靠人工验证；没有自动化 UI/设备矩阵测试。
 - 浏览器通知需要 HTTPS 安全上下文；HTTP 下只能提示用户切换，不能伪造通知能力。
 - 宿主半改动需要重启 dsh web 才生效；当前会话内不能重启验证，只能靠离线测试 + 用户重启后反馈。
-- 华为浏览器的 `file` 协议兼容层是针对性 workaround；没有该环境时只能保证不干扰正常浏览器。
+- 华为浏览器的资源协议兼容层（按地址前缀转发到官方 provider）是针对空 host 解析的 workaround；没有该环境时只能保证不干扰正常浏览器。
 - 不同 Android WebView 对 Service Worker / 通知的支持有差异；诊断页能收集证据，但不能替代真机验证。
 - 发布包以 `files` 白名单为准；`test/`、`AGENTS.md` 不进入包内。
 - 根 README 与代码如有出入，以代码和测试为准；发现文档漂移时在本轮顺手修正。

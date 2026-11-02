@@ -6,11 +6,13 @@
  * Node report `hostname === 'file'`. The official `dsh-client-resources`
  * registry derives a record's protocol key from that hostname
  * (`new URL(address).hostname.toLowerCase()`), so on that browser every
- * `dsh-resource://` file record is keyed `undefined`, `providerOf(undefined)`
- * finds nothing, the record's status stays `none` and the document preview
- * prints 「文件资源服务不可用」. The official `file` provider itself parses its
- * addresses by string prefix (`dsh-resource://file/`), so it never needs the
- * URL parser and the whole chain works once the record is attached to it.
+ * `dsh-resource://` record is keyed `undefined`, `providerOf(undefined)` finds
+ * nothing and every preview paints its own "unavailable" branch: the document
+ * preview prints 「文件资源服务不可用」 and a submitted plan prints 「计划预览不可用」.
+ * The official providers themselves parse their addresses by string prefix
+ * (`dsh-resource://file/`, `dsh-resource://plan/…`, `dsh-resource://subagentchat/…`),
+ * so they never need the URL parser, and the whole chain works once a record is
+ * attached to the provider named in its own address.
  *
  * Two narrow steps, and only when the probe below says the parser differs:
  *
@@ -23,11 +25,19 @@
  *      The bridge answers the `undefined` key with the alias and delegates every
  *      other key to the original method; it is restored on dispose.
  *
+ * The alias itself is a dispatcher, not a file forwarder: it reads the protocol
+ * prefix of the address (`dsh-resource://<protocol>/…`) and forwards the
+ * unchanged address and options to that protocol's official provider — `file`
+ * for workspace files, `plan` for submitted plans, `subagentchat` for subagent
+ * transcripts, and any provider added later, without this file having to know
+ * them. An address whose protocol has no provider gets one failure frame, never
+ * a throw.
+ *
  * Nothing is registered for any other protocol, no global `URL` is touched, and
  * on a normal parser the probe is `false`: no alias, no bridge, no polling —
- * this chunk is a no-op there. Once the official package treats the empty host
- * as `file` itself, the probe goes `false` and the whole shim disappears with
- * it.
+ * this chunk is a no-op there. Once the official package derives the protocol
+ * from the address itself, the probe goes `false` and the whole shim disappears
+ * with it.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-mobile',
@@ -36,9 +46,9 @@ window.__ModuleLoader__.load({
   factory() {
     /** The address whose parse tells the two parsers apart. */
     const PROBE = 'dsh-resource://file/probe';
-    /** The prefix the official `file` provider parses without a URL. */
-    const FILE_PREFIX = 'dsh-resource://file/';
-    /** The official provider may arrive after this chunk: poll, then give up. */
+    /** The scheme every resource address shares; the protocol follows it. */
+    const SCHEME = 'dsh-resource://';
+    /** The official providers may arrive after this chunk: poll, then give up. */
     const POLL_MS = 250;
     const LIMIT_MS = 30_000;
 
@@ -64,6 +74,22 @@ window.__ModuleLoader__.load({
     const text = (value) => String(value ?? '');
 
     /**
+     * The protocol prefix of one address, read without the URL parser.
+     *
+     * `dsh-resource://plan/session/x/call` -> `plan`. This is the key the
+     * official registry would derive on a parser that keeps the host, and the
+     * key the providers themselves parse by prefix.
+     */
+    function protocolKeyOf(address) {
+      const target = text(address);
+      if (!target.startsWith(SCHEME)) return undefined;
+      const rest = target.slice(SCHEME.length);
+      const slash = rest.indexOf('/');
+      const key = slash === -1 ? rest : rest.slice(0, slash);
+      return key === '' ? undefined : key;
+    }
+
+    /**
      * One failure frame, in the registry's own frame shape.
      *
      * A provider's `open` is an async generator of frames; a throw would surface
@@ -73,32 +99,37 @@ window.__ModuleLoader__.load({
     const unsupported = (address) => ({
       ok: false,
       error: {
-        code: 'workspace-file/unsupported-address',
-        message: `the file compatibility alias only forwards ${FILE_PREFIX} addresses, got ${text(address)}`,
+        code: 'resource/unsupported-address',
+        message: `no resource provider handles ${text(address)}`,
       },
     });
 
     /**
      * The alias provider: `protocol: undefined`, the key this browser's records
-     * carry, forwarding the official `file` provider by address prefix.
+     * carry, dispatching by the protocol prefix of each address to the official
+     * provider registered for it.
+     *
+     * `lookup` answers a protocol key with the official provider (or undefined),
+     * and is bound to the live registry by the caller.
      */
-    function createAlias(official) {
+    function createAlias(lookup) {
       return {
         protocol: undefined,
         async *open(address, opts) {
-          const target = text(address);
-          if (target === 'dsh-resource://file' || target.startsWith(FILE_PREFIX)) {
-            if (typeof official?.open !== 'function') {
-              yield {
-                ok: false,
-                error: { code: 'workspace-file/unsupported-address', message: 'the file provider has no open()' },
-              };
-              return;
+          const protocol = protocolKeyOf(address);
+          let official;
+          if (protocol !== undefined) {
+            try {
+              official = lookup(protocol);
+            } catch {
+              official = undefined;
             }
-            yield* official.open(address, opts);
+          }
+          if (official === undefined || official === null || typeof official.open !== 'function') {
+            yield unsupported(address);
             return;
           }
-          yield unsupported(address);
+          yield* official.open(address, opts);
         },
       };
     }
@@ -172,6 +203,11 @@ window.__ModuleLoader__.load({
       /**
        * Try once: wait for `providerOf('file')`, bridge the lookup, register.
        *
+       * The `file` provider is this client's readiness signal — the workspace
+       * files integration is registered with every Session surface — and once
+       * the alias is registered every held record is attached, so waiting for
+       * one official provider keeps the heal from racing the provider graph.
+       *
        * Returns `true` when this attempt settled the matter (registered, or gave
        * up for good) and `false` when it should be retried on the next tick.
        */
@@ -181,15 +217,21 @@ window.__ModuleLoader__.load({
         if (!resources || typeof resources.providerOf !== 'function' || typeof resources.register !== 'function') {
           return false;
         }
-        let official;
+        let ready;
         try {
-          official = resources.providerOf('file');
+          ready = resources.providerOf('file');
         } catch {
-          official = undefined;
+          ready = undefined;
         }
-        if (official === undefined || official === null) return false;
+        if (ready === undefined || ready === null) return false;
 
-        alias = createAlias(official);
+        // The bridge below shadows providerOf, so the alias keeps the original
+        // method and asks it for every protocol the address names — including
+        // providers registered after this install.
+        const originalProviderOf = resources.providerOf;
+        const lookup = (protocol) => originalProviderOf.call(resources, protocol);
+
+        alias = createAlias(lookup);
         restoreLookup = bridgeLookup(resources, alias);
         if (!restoreLookup) {
           status = 'failed';
@@ -251,7 +293,7 @@ window.__ModuleLoader__.load({
           note,
           detail:
             status === 'active'
-              ? 'yes · via file provider'
+              ? 'yes · via protocol provider'
               : `no (${status === 'normal' ? 'url parser normal' : note || status})`,
         };
       }
@@ -294,6 +336,6 @@ window.__ModuleLoader__.load({
       return api;
     }
 
-    return { install, parserBroken, current: () => current };
+    return { install, parserBroken, protocolKeyOf, current: () => current };
   },
 });
