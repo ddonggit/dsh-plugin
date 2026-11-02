@@ -80,7 +80,6 @@ git log -1 --stat
 | `client.js` | 浏览器半入口：chunk 加载、启动顺序、slots、locale、关键 CSS |
 | `client.styles.js` | 移动皮肤与设置页样式（只负责表现） |
 | `client.sidebar.js` | 侧栏状态机、DOM 选择器、手势、`data-dshm-*` 标记 |
-| `client.back.js` | 手机端全局返回/关闭按钮：body 级浮层，按层退一步 |
 | `client.deeplink.js` | `#session=` / `?session=` 深链 |
 | `client.notify.js` | 浏览器通知、feed 追赶、宿主设置缓存、SW 消息 |
 | `client.resource-compat.js` | 华为浏览器资源协议兼容：按地址前缀把 file / plan 等转发给官方 provider |
@@ -117,9 +116,9 @@ git log -1 --stat
 - 入口的 `CHUNK` 表是 chunk 路径的唯一来源；新增 chunk 时同时更新 `CHUNK`、文件本身的 `chunk:` 字段和加载顺序。
 - chunk 加载失败必须被 `loadChunk` 吞掉并记录到 `chunkStatus`，只让对应功能失效；不要让 `boot()` 抛到全局，否则会拖垮其它 chunk。诊断页读取 `chunkStatus` 展示失败原因。
 - chunk 只能 `require('react')`（基座共享模块）；不要 `import` Node 内置模块，不要写顶层 DOM 操作，不要用相对路径同步 import 其它 chunk。
-- 启动顺序是有意义的：先关键 CSS → styles → resource-compat → forensics → sidebar/back/notify/deeplink，再注册 header 菜单、设置页和 overlay。改动顺序前先确认依赖关系。
+- 启动顺序是有意义的：先关键 CSS → styles → resource-compat → forensics → sidebar/notify/deeplink，再注册 header 菜单、设置页和 overlay。改动顺序前先确认依赖关系。
 - 关键 CSS 必须在第一个 `await` 之前同步注入，避免手机冷启动先闪一帧桌面布局；侧栏 chunk 失败或安装完成时必须 `settleCritical()` 移除它，不能留下“侧栏被隐藏且没有菜单按钮”的状态。
-- 除 `client.back.js` 的全局返回按钮外，只通过官方 slot 注册 UI：`conversation.header.leading`（id `dsh-mobile-menu`）、`settings.section`（id `dsh-mobile-notify`，order 91）、`shell.overlay`（id `dsh-mobile-notify`，order 90）。**不要往 header DOM 里注入节点**，slot 不存在时只损失这个入口。全局返回按钮是唯一的 body 级例外：设置弹窗 portal 在 shell overlay 之上，只有 body 级节点能覆盖所有页面；它只增删自己的一个按钮，不改 DSH 的 React 树或别人的 DOM。
+- 只通过官方 slot 注册 UI：`conversation.header.leading`（id `dsh-mobile-menu`）、`settings.section`（id `dsh-mobile-notify`，order 91）、`shell.overlay`（id `dsh-mobile-notify`，order 90）。**不要往 header DOM 里注入节点**，slot 不存在时只损失这个入口；不要往 body 上挂全局浮层。
 - 侧栏状态以官方 `data-sidebar-collapsed` 属性和 `ctx.layout.toggleSidebar` 为准，不维护自己的展开状态；所有 `data-dshm-*` 标记由 `client.sidebar.js` 写，样式只读。
 - 压缩后的 CSS Module 类名只允许出现在 `client.sidebar.js` 的 `SEL` 表里；前端升级换哈希时只改这一处。
 - 文案通过 `ctx.locale.register('dsh-mobile', 'en'|'zh', MESSAGES)` 注册，两种语言必须同时补齐；`locale/*.json` 只有 `meta.title/description`，只改它不会改变设置页文案。
@@ -152,7 +151,7 @@ git log -1 --stat
 
 这些是用户能感知的行为边界，改动时不得悄悄破坏：
 
-1. **独立失败**：布局、全局返回、通知、深链、兼容层、诊断、设置页任一 chunk 失败，只关掉自己的功能；入口继续运行，诊断页能看到失败原因。全局返回按钮失败时，其它页面入口仍按原逻辑工作。
+1. **独立失败**：布局、通知、深链、兼容层、诊断、设置页任一 chunk 失败，只关掉自己的功能；入口继续运行，诊断页能看到失败原因。
 2. **首屏不闪桌面布局**：关键 CSS 同步注入；真实皮肤接管或侧栏 chunk 失败后必须移除，不能把用户困在“没有侧栏也没有按钮”的界面。
 3. **通知只来自根会话的真实事件**：只对根会话的完成/失败 turn，或正在等待用户处理的审批/提问发通知；子会话、中止的 turn、被阻塞的前置步骤、崩溃孤儿 turn、以及已有后续 turn 的旧 turn 都不通知。不要扩大触发面。
 4. **一个事件只提醒一次**：浏览器前景页的 running→idle watcher 与宿主 feed 追赶不能重复弹同一条；`ask` 不能穿上一轮完成通知的文案。
@@ -171,10 +170,10 @@ git log -1 --stat
 
 1. **看现场**：`git status --short`、`git log --oneline -5`。仓库里可能有其它插件或 worktree 的未提交改动；它们不属于本轮，不要 stage、不要 stash、不要 reset、不要 checkout 覆盖。
 2. **读事实**：先读相关入口/chunk/测试；行为以代码和测试为准。`lib/notify` 的配置合并、去抖/节流、路由签名尤其要先确认。
-3. **选对层**：样式只进 `client.styles.js`；DOM 契约只进 `client.sidebar.js`；全局返回逻辑只进 `client.back.js`；浏览器通知逻辑进 `client.notify.js`；宿主事件判定进 `lib/notify/dispatcher.js`；渠道适配进 `lib/notify/channels.js`。不要把宿主逻辑塞进浏览器半。
+3. **选对层**：样式只进 `client.styles.js`；DOM 契约只进 `client.sidebar.js`；浏览器通知逻辑进 `client.notify.js`；宿主事件判定进 `lib/notify/dispatcher.js`；渠道适配进 `lib/notify/channels.js`。不要把宿主逻辑塞进浏览器半。
 4. **补测试**：宿主逻辑改动用 `test/*.test.mjs` 覆盖路由、合并、调度、自动回答；客户端行为改动优先加进 `test/client-notify.test.mjs` 或 `client-harness.mjs` 能覆盖的路径。断言具体状态/文案/调用次数，不只断言“没抛异常”。
 5. **更新文档**：用户可见行为变化同步改根 `README.md` 的插件表/说明、`package.json` 的 `description` 和版本（`dsh-mobile` 没有独立 README）；纯文档修改不升版本。
-6. **运行验证**：`npm run verify`，确认 `HARNESS OK`、46+ 通过、0 失败、0 取消。
+6. **运行验证**：`npm run verify`，确认 `HARNESS OK`、43+ 通过、0 失败、0 取消。
 7. **检查契约**：三处 id、chunk 的 `id/chunk`、`files` 白名单、无新增依赖、无未清理的 effect。可用：
 
    ```bash
@@ -199,7 +198,7 @@ npm run verify  # check + test
 ```
 
 - `npm run check` 不是语法检查，而是离线客户端集成 harness：它复刻 module loader、React、DOM 和官方 layout 服务，然后运行真实 `client.js` 与 chunk。它失败通常意味着 chunk 路径、导出、DOM 契约或状态机漂移。
-- `npm test` 是 `node --test`，当前 46 项。**0 cancelled 是硬要求**：调度器的计时器刻意 `unref()`（避免 24h 自动回答拖住宿主），测试必须用带引用的超时守卫等待这类 promise，不能靠事件循环“碰巧还活着”。
+- `npm test` 是 `node --test`，当前 43 项。**0 cancelled 是硬要求**：调度器的计时器刻意 `unref()`（避免 24h 自动回答拖住宿主），测试必须用带引用的超时守卫等待这类 promise，不能靠事件循环“碰巧还活着”。
 - 测试必须离线：不连真实 webhook、不发真实通知、不读真实 `settings.json`、不依赖真实浏览器。用 fake `fetch`、临时目录、假 DOM、假 ctx。
 - 客户端测试在 import chunk 之前安装 DOM/storage stub；chunk 是浏览器脚本，不能直接当模块 import。
 - 渠道测试只验证请求形状和成功/失败解析；不要在测试里放真实 token 或 URL。

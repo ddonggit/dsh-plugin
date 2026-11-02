@@ -34,7 +34,6 @@ window.__ModuleLoader__.load({
 const CHUNK = {
   styles: './client.styles.js',
   sidebar: './client.sidebar.js',
-  back: './client.back.js',
   deeplink: './client.deeplink.js',
   notify: './client.notify.js',
   resourceCompat: './client.resource-compat.js',
@@ -143,8 +142,6 @@ const MESSAGES = {
     sGo: 'Open HTTPS',
     navHidden: 'Open sidebar',
     navDrawer: 'Close sidebar',
-    back: 'Back',
-    backHint: 'Go back one level',
     dTitle: 'Diagnostics',
     dHint: 'Read-only. Copy the whole report when reporting a problem with previews, notifications or the sidebar.',
     dOpen: 'Collect diagnostics',
@@ -204,8 +201,6 @@ const MESSAGES = {
     sGo: '打开 HTTPS',
     navHidden: '打开侧栏',
     navDrawer: '收起侧栏',
-    back: '返回',
-    backHint: '返回上一级',
     dTitle: '诊断',
     dHint: '只读。反馈预览、通知、侧栏问题时，把整份报告复制出来。',
     dOpen: '生成诊断信息',
@@ -347,9 +342,8 @@ return {
         }
       }
 
-      const [sidebar, back, notify, deeplink] = await Promise.all([
+      const [sidebar, notify, deeplink] = await Promise.all([
         loadChunk(require, 'sidebar'),
-        loadChunk(require, 'back'),
         loadChunk(require, 'notify'),
         loadChunk(require, 'deeplink'),
       ]);
@@ -395,19 +389,6 @@ return {
         }
       } else {
         settleCritical();
-      }
-
-      // The phone's global way home. It is body-level on purpose: the settings
-      // dialog is portalled above the shell's overlay layer, so no slot-owned
-      // element can cover every surface. A failed install only loses this
-      // button; layout, notifications and deep links continue.
-      if (back && sidebarInstance) {
-        try {
-          const backApi = back.installBack(ctx, { sidebar: sidebarInstance, sel: sidebar.SEL, t });
-          ctx.effect(() => () => backApi.dispose());
-        } catch (error) {
-          console.error('[dsh-mobile] global back button failed to install', error);
-        }
       }
 
       const api = notify?.api ?? null;
