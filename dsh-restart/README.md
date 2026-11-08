@@ -2,6 +2,13 @@
 
 DSH Web 的「服务与重启」插件：在设置页里安全地重启 `dsh web`，显示阶段进度、失败现场和运行状态。
 
+设置页只做四件事：
+
+- 顶部显示服务是否正常，需要时点「重启服务」；
+- 重启过程中显示四个阶段；触发重启的页面会在服务恢复后自动刷新；
+- 失败时说明原因，可以重试；错误码、诊断命令和日志收在「技术详情」里；
+- 「最近重启」保留时间和结果，不显示进程号之类的过程细节。
+
 设计目标是**换一台机器也能用**：不假设服务一定叫 `dsh-web`，不假设一定有 systemd，也不假设监听在
 `127.0.0.1` 或走 HTTP。
 
@@ -162,7 +169,7 @@ Environment=DSH_RESTART_UNIT=my-dsh.service
    - 看 `sys.modeReason`：`cgroup-unit` / `configured-unit` / `no-unit` / `systemctl-missing` / `explicit`。
 
 3. **重启失败**
-   - 先看页面上的错误码和「执行器日志」；
+   - 先展开页面上的「技术详情」，看错误码、诊断命令和日志；
    - 数据目录：`$DSH_HOME/dsh-restart/data`，日志 `runner.log`，单轮状态 `run.json`；
    - systemd 模式：`systemctl status <unit>` / `journalctl -u <unit> -n 100`；
    - 直接模式：看 `runner.log` 里启动命令的输出和端口占用。

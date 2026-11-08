@@ -31,11 +31,7 @@ window.__ModuleLoader__.load({
       return '直接重启'
     }
 
-    function targetLabel(info) {
-      if (!info) return '—'
-      if (info.mode === 'direct' || !info.unit) return '直接重启（无 systemd 单元）'
-      return info.unit
-    }
+    
 
     function diagCommand(info) {
       const unit = info && info.unit
@@ -50,296 +46,597 @@ window.__ModuleLoader__.load({
       return (host.indexOf(':') >= 0 ? '[' + host + ']' : host) + ':' + info.port
     }
 
+    function addressLabel(info) {
+      if (!info) return '—'
+      return info.advertisedUrl || info.origin || endpointLabel(info)
+    }
+
     const CSS = `
-      .dshr-root {
-        --dshr-card: var(--dsw-alias-bg-layer-1, #ffffff);
-        --dshr-soft: var(--dsw-alias-bg-layer-2, #f4f5f7);
-        --dshr-sunk: var(--dsw-alias-bg-layer-3, #eceef2);
-        --dshr-line: var(--dsw-alias-border-l2, color-mix(in srgb, currentColor 12%, transparent));
-        --dshr-line-strong: var(--dsw-alias-border-l3, color-mix(in srgb, currentColor 20%, transparent));
-        --dshr-text: var(--dsw-alias-label-primary, #111827);
-        --dshr-sub: var(--dsw-alias-label-secondary, #4b5563);
-        --dshr-mute: var(--dsw-alias-label-tertiary, #6b7280);
-        --dshr-accent: var(--dsw-alias-brand-primary, #4f7cff);
-        --dshr-ok: var(--dsw-alias-state-success-primary, #12b76a);
-        --dshr-warn: var(--dsw-alias-state-warn-primary, #f79009);
-        --dshr-err: var(--dsw-alias-state-error-primary, #ef4444);
-        --dshr-radius: var(--dsw-radius-panel, 14px);
+/* 暖灰底色 + 单一青黛强调色。浅色与暗色各自成对，避免冷蓝灰。 */
+      .dshr-root,
+      .dshr-mask {
+        --dshr-card: #fbf9f4;
+        --dshr-soft: #f3efe6;
+        --dshr-sunk: #ebe5d9;
+        --dshr-line: #e3dbcc;
+        --dshr-line-strong: #d4c8b4;
+        --dshr-text: #2b2620;
+        --dshr-sub: #60584b;
+        --dshr-mute: #776e60;
+        --dshr-accent: #4c4665;
+        --dshr-accent-hover: #3e3955;
+        --dshr-on-accent: #fbf9f4;
+        --dshr-ok: #2c7349;
+        --dshr-err: #9c3b45;
+        --dshr-warn: #7d5b1f;
+        --dshr-radius: 12px;
+        --dshr-radius-sm: 8px;
+        --dshr-fs-title: 20px;
+        --dshr-fs-body: 14px;
+        --dshr-fs-small: 13px;
+        --dshr-fs-meta: 12px;
         --dshr-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      body[data-ds-dark-theme] .dshr-root,
+      body[data-ds-dark-theme] .dshr-mask {
+        --dshr-card: #211f1c;
+        --dshr-soft: #2b2823;
+        --dshr-sunk: #181613;
+        --dshr-line: #3b362d;
+        --dshr-line-strong: #4d463a;
+        --dshr-text: #f1ece3;
+        --dshr-sub: #c3baab;
+        --dshr-mute: #9c9384;
+        --dshr-accent: #cfc6e6;
+        --dshr-accent-hover: #ddd6ef;
+        --dshr-on-accent: #241f2b;
+        --dshr-ok: #82c99f;
+        --dshr-err: #e4949b;
+        --dshr-warn: #d8b673;
+      }
+
+      .dshr-root {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        max-width: 1080px;
-        padding: 4px 0 40px;
+        gap: 20px;
+        max-width: 920px;
+        padding: 4px 0 48px;
         color: var(--dshr-text);
-        font-size: 13px;
-        line-height: 1.55;
+        font-size: var(--dshr-fs-body);
+        line-height: 1.6;
       }
-      .dshr-root *, .dshr-root *::before, .dshr-root *::after { box-sizing: border-box; }
-      .dshr-head { display: flex; flex-direction: column; gap: 2px; }
-      .dshr-head h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
-      .dshr-head p { margin: 0; color: var(--dshr-mute); font-size: 12.5px; }
+      .dshr-root *,
+      .dshr-mask *,
+      .dshr-root *::before,
+      .dshr-root *::after {
+        box-sizing: border-box;
+      }
+
+      .dshr-head h1 {
+        margin: 0;
+        font-size: var(--dshr-fs-title);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .dshr-head p {
+        margin: 6px 0 0;
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
 
       .dshr-card {
         border: 1px solid var(--dshr-line);
         border-radius: var(--dshr-radius);
         background: var(--dshr-card);
       }
-      .dshr-hero {
+
+      /* 顶部状态 */
+      .dshr-status {
         display: flex;
         align-items: center;
-        gap: 18px;
-        padding: 18px 20px;
-        background: linear-gradient(180deg, var(--dsw-alias-bg-layer-2, #f7f8fa) 0%, var(--dshr-card) 100%);
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 20px;
       }
-      .dshr-heroLead { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; }
-      .dshr-heroText { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-      .dshr-heroTitle { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
-      .dshr-heroMeta { color: var(--dshr-mute); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .dshr-heroActions { display: flex; gap: 8px; flex-shrink: 0; }
-
+      .dshr-statusLead {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        flex: 1 1 260px;
+        min-width: 0;
+      }
       .dshr-beacon {
-        position: relative;
+        width: 10px;
+        height: 10px;
+        margin-top: 7px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: var(--dshr-ok);
+      }
+      .dshr-beacon[data-tone="busy"] { background: var(--dshr-accent); }
+      .dshr-beacon[data-tone="warn"] { background: var(--dshr-warn); }
+      .dshr-beacon[data-tone="down"] { background: var(--dshr-err); }
+      .dshr-statusTitle {
+        font-size: var(--dshr-fs-title);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .dshr-statusMeta {
+        margin-top: 2px;
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-statusActions { flex: 0 0 auto; }
+
+      /* 按钮：全页仅一种强调色，危险操作不铺红色 */
+      .dshr-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 14px;
+        border: 1px solid var(--dshr-line-strong);
+        border-radius: var(--dshr-radius-sm);
+        background: var(--dshr-card);
+        color: var(--dshr-text);
+        font: inherit;
+        font-size: var(--dshr-fs-small);
+        font-weight: 500;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color .15s ease, border-color .15s ease;
+      }
+      .dshr-btn:hover { background: var(--dshr-soft); }
+      .dshr-btn:active { background: var(--dshr-sunk); }
+      .dshr-btn:focus-visible { outline: 2px solid var(--dshr-accent); outline-offset: 2px; }
+      .dshr-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .dshr-btn:disabled:hover { background: var(--dshr-card); }
+      .dshr-btnPrimary {
+        border-color: transparent;
+        background: var(--dshr-accent);
+        color: var(--dshr-on-accent);
+      }
+      .dshr-btnPrimary:hover { background: var(--dshr-accent-hover); }
+      .dshr-btnPrimary:active { background: var(--dshr-accent-hover); }
+      .dshr-btnPrimary:disabled,
+      .dshr-btnPrimary:disabled:hover {
+        opacity: 1;
+        border-color: var(--dshr-line);
+        background: var(--dshr-sunk);
+        color: var(--dshr-mute);
+      }
+      .dshr-btnGhost {
+        border-color: transparent;
+        background: transparent;
+        color: var(--dshr-sub);
+      }
+      .dshr-btnGhost:hover { background: var(--dshr-soft); color: var(--dshr-text); }
+      .dshr-btnGhost:disabled:hover { background: transparent; }
+      .dshr-btnSm {
+        height: 30px;
+        padding: 0 10px;
+        font-size: var(--dshr-fs-meta);
+      }
+
+      /* 提示条：中性底 + 细边，不铺大面积红/橙 */
+      .dshr-callout {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid var(--dshr-line);
+        border-left: 3px solid var(--dshr-line-strong);
+        border-radius: var(--dshr-radius-sm);
+        background: var(--dshr-soft);
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-callout[data-tone="err"] { border-left-color: var(--dshr-err); }
+      .dshr-callout[data-tone="warn"] { border-left-color: var(--dshr-warn); }
+      .dshr-callout[data-tone="busy"] { border-left-color: var(--dshr-accent); }
+      .dshr-calloutTitle {
+        color: var(--dshr-text);
+        font-weight: 600;
+      }
+      .dshr-calloutBody { flex: 1; min-width: 0; }
+      .dshr-calloutHint { margin-top: 2px; }
+      .dshr-calloutActions {
+        display: flex;
+        gap: 8px;
+        flex: 0 0 auto;
+        align-self: center;
+      }
+      .dshr-callout .dshr-icon { color: var(--dshr-err); }
+      .dshr-callout[data-tone="warn"] .dshr-icon { color: var(--dshr-warn); }
+      .dshr-callout[data-tone="busy"] .dshr-icon { color: var(--dshr-accent); }
+
+      /* 重启结果 / 进行中 */
+      .dshr-run { padding: 16px 18px; }
+      .dshr-runHead {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .dshr-runIcon {
+        display: inline-flex;
+        margin-top: 2px;
+        color: var(--dshr-ok);
+      }
+      .dshr-runIcon[data-tone="busy"] { color: var(--dshr-accent); }
+      .dshr-runIcon[data-tone="err"] { color: var(--dshr-err); }
+      .dshr-runIcon[data-tone="warn"] { color: var(--dshr-warn); }
+      .dshr-runText { min-width: 0; }
+      .dshr-runTitle {
+        font-size: var(--dshr-fs-body);
+        font-weight: 600;
+        line-height: 1.5;
+      }
+      .dshr-runMeta {
+        margin-top: 2px;
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-runActions { margin-left: auto; flex: 0 0 auto; }
+      .dshr-runBody {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .dshr-runBody > p { margin: 0; }
+      .dshr-runBody .dshr-hint { color: var(--dshr-sub); font-size: var(--dshr-fs-small); }
+      .dshr-runBody .dshr-note { color: var(--dshr-sub); font-size: var(--dshr-fs-small); }
+
+      /* 进度：一条连续的细线，不做嵌套卡片 */
+      .dshr-steps {
+        display: flex;
+        margin: 12px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .dshr-step {
+        flex: 1 1 0;
+        min-width: 0;
+        padding: 10px 10px 0 0;
+        border-top: 2px solid var(--dshr-line);
+      }
+      .dshr-step:last-child { padding-right: 0; }
+      .dshr-step[data-state="done"] { border-color: var(--dshr-ok); }
+      .dshr-step[data-state="active"] { border-color: var(--dshr-accent); }
+      .dshr-step[data-state="failed"] { border-color: var(--dshr-err); }
+      .dshr-stepTop {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--dshr-mute);
+        font-size: var(--dshr-fs-meta);
+      }
+      .dshr-step[data-state="done"] .dshr-stepTop { color: var(--dshr-sub); }
+      .dshr-step[data-state="active"] .dshr-stepTop { color: var(--dshr-text); }
+      .dshr-step[data-state="failed"] .dshr-stepTop { color: var(--dshr-err); }
+      .dshr-stepLabel {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      /* 键值行 */
+      .dshr-rows {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+      }
+      .dshr-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 0;
+        border-top: 1px solid var(--dshr-line);
+      }
+      .dshr-row:first-child { border-top: 0; padding-top: 0; }
+      .dshr-row:last-child { padding-bottom: 0; }
+      .dshr-row dt {
+        flex: 0 0 auto;
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-row dd {
+        margin: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-row dd.mono {
+        font-family: var(--dshr-mono);
+        font-size: var(--dshr-fs-meta);
+      }
+
+      /* 面板 */
+      .dshr-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .dshr-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px 18px;
+      }
+      .dshr-panelHead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .dshr-panelHead h2 {
+        margin: 0;
+        font-size: var(--dshr-fs-body);
+        font-weight: 600;
+      }
+      .dshr-panelHead span {
+        color: var(--dshr-mute);
+        font-size: var(--dshr-fs-meta);
+      }
+
+      /* 历史 */
+      .dshr-history {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .dshr-hrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid var(--dshr-line);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-hrow:first-child { border-top: 0; padding-top: 0; }
+      .dshr-hrow:last-child { padding-bottom: 0; }
+      .dshr-hwhen {
+        color: var(--dshr-sub);
+        white-space: nowrap;
+      }
+      .dshr-hms {
+        margin-left: auto;
+        color: var(--dshr-mute);
+        font-family: var(--dshr-mono);
+        font-size: var(--dshr-fs-meta);
+        white-space: nowrap;
+      }
+      .dshr-empty {
+        margin: 0;
+        color: var(--dshr-mute);
+        font-size: var(--dshr-fs-small);
+      }
+
+      .dshr-tag {
+        display: inline-flex;
+        align-items: center;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: var(--dshr-soft);
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-meta);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .dshr-tag[data-tone="ok"] {
+        background: color-mix(in srgb, var(--dshr-ok) 12%, var(--dshr-soft));
+        color: var(--dshr-ok);
+      }
+      .dshr-tag[data-tone="warn"] {
+        background: color-mix(in srgb, var(--dshr-warn) 12%, var(--dshr-soft));
+        color: var(--dshr-warn);
+      }
+      .dshr-tag[data-tone="err"] {
+        background: color-mix(in srgb, var(--dshr-err) 12%, var(--dshr-soft));
+        color: var(--dshr-err);
+      }
+
+      /* 详情、代码、日志 */
+      .dshr-details { margin-top: 2px; }
+      .dshr-details > summary {
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+        cursor: pointer;
+        list-style-position: inside;
+      }
+      .dshr-details > summary:hover { color: var(--dshr-text); }
+      .dshr-details[open] > summary { margin-bottom: 8px; }
+      .dshr-details .dshr-rows { margin-top: 0; }
+      .dshr-log {
+        margin: 8px 0 0;
+        padding: 10px 12px;
+        max-height: 200px;
+        overflow: auto;
+        border-radius: var(--dshr-radius-sm);
+        background: var(--dshr-sunk);
+        color: var(--dshr-sub);
+        font-family: var(--dshr-mono);
+        font-size: var(--dshr-fs-meta);
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .dshr-cmd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .dshr-cmd code {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: var(--dshr-radius-sm);
+        background: var(--dshr-sunk);
+        font-family: var(--dshr-mono);
+        font-size: var(--dshr-fs-meta);
+        line-height: 1.5;
+        white-space: normal;
+        word-break: break-all;
+      }
+      .dshr-more {
+        border-top: 1px solid var(--dshr-line);
+        padding-top: 10px;
+      }
+
+      .dshr-spin {
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: var(--dshr-ok);
-        flex-shrink: 0;
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--dshr-ok) 16%, transparent);
+        border: 2px solid color-mix(in srgb, var(--dshr-accent) 24%, transparent);
+        border-top-color: var(--dshr-accent);
+        animation: dshr-rotate .8s linear infinite;
+        flex: 0 0 auto;
       }
-      .dshr-beacon[data-tone="busy"] { background: var(--dshr-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--dshr-accent) 18%, transparent); animation: dshr-breathe 1.6s ease-in-out infinite; }
-      .dshr-beacon[data-tone="warn"] { background: var(--dshr-warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--dshr-warn) 18%, transparent); }
-      .dshr-beacon[data-tone="down"] { background: var(--dshr-err); box-shadow: 0 0 0 4px color-mix(in srgb, var(--dshr-err) 18%, transparent); }
-      @keyframes dshr-breathe { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.25); opacity: .65 } }
-
-      .dshr-tag {
-        display: inline-flex; align-items: center; gap: 5px;
-        height: 22px; padding: 0 8px; border-radius: 999px;
-        font-size: 11.5px; font-weight: 500; letter-spacing: .01em;
-        background: var(--dshr-soft); color: var(--dshr-sub);
-      }
-      .dshr-tag[data-tone="ok"] { background: rgba(18, 183, 106, .14); background: color-mix(in srgb, var(--dshr-ok) 14%, transparent); color: var(--dshr-ok); }
-      .dshr-tag[data-tone="busy"] { background: rgba(79, 124, 255, .14); background: color-mix(in srgb, var(--dshr-accent) 14%, transparent); color: var(--dshr-accent); }
-      .dshr-tag[data-tone="warn"] { background: rgba(247, 144, 9, .16); background: color-mix(in srgb, var(--dshr-warn) 16%, transparent); color: var(--dshr-warn); }
-      .dshr-tag[data-tone="err"] { background: rgba(239, 68, 68, .14); background: color-mix(in srgb, var(--dshr-err) 14%, transparent); color: var(--dshr-err); }
-
-      .dshr-btn {
-        height: 34px; padding: 0 14px;
-        border: 1px solid var(--dshr-line-strong);
-        border-radius: 9px;
-        background: var(--dshr-card);
-        color: var(--dshr-text);
-        font: inherit; font-size: 13px; font-weight: 500;
-        cursor: pointer;
-        transition: background .16s ease, border-color .16s ease, transform .06s ease;
-      }
-      .dshr-btn:hover { background: var(--dsw-alias-interactive-bg-hover, var(--dshr-soft)); }
-      .dshr-btn:active { transform: translateY(1px); }
-      .dshr-btn:focus-visible { outline: 2px solid var(--dshr-accent); outline-offset: 2px; }
-      .dshr-btn:disabled { opacity: .55; cursor: not-allowed; }
-      .dshr-btnPrimary {
-        background: var(--dsw-alias-button-primary-fill, var(--dshr-accent));
-        border-color: transparent;
-        color: var(--dsw-alias-label-primary-foreground, #fff);
-      }
-      .dshr-btnPrimary:hover { background: var(--dsw-alias-button-primary-hover, var(--dshr-accent)); filter: brightness(1.04); }
-      .dshr-btnDanger { background: var(--dshr-err); border-color: transparent; color: #fff; }
-      .dshr-btnDanger:hover { filter: brightness(1.05); background: var(--dshr-err); }
-      .dshr-btnGhost { border-color: transparent; background: transparent; color: var(--dshr-sub); }
-      .dshr-btnSm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
-
-      .dshr-run { padding: 16px 18px; }
-      .dshr-run[data-tone="busy"] { border-color: var(--dshr-line-strong); border-color: color-mix(in srgb, var(--dshr-accent) 34%, var(--dshr-line)); }
-      .dshr-run[data-tone="ok"] { border-color: var(--dshr-line-strong); border-color: color-mix(in srgb, var(--dshr-ok) 32%, var(--dshr-line)); }
-      .dshr-run[data-tone="err"] { border-color: var(--dshr-line-strong); border-color: color-mix(in srgb, var(--dshr-err) 32%, var(--dshr-line)); }
-      .dshr-runHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .dshr-runTitle { font-weight: 600; font-size: 14px; }
-      .dshr-elapsed { font-family: var(--dshr-mono); font-size: 12px; color: var(--dshr-mute); margin-left: auto; }
-      .dshr-runId { font-family: var(--dshr-mono); font-size: 11px; color: var(--dshr-mute); opacity: .8; }
-      .dshr-hint { margin: 8px 0 0; color: var(--dshr-sub); font-size: 12.5px; }
-      .dshr-small { color: var(--dshr-mute); font-size: 12px; }
-
-      .dshr-steps {
-        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px; margin: 14px 0 0; padding: 0; list-style: none;
-      }
-      .dshr-step { position: relative; padding: 12px 12px 10px; border-radius: 10px; background: var(--dshr-soft); min-width: 0; }
-      .dshr-step::before { content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--dshr-line-strong); }
-      .dshr-step[data-state="active"] { background: var(--dshr-soft); background: color-mix(in srgb, var(--dshr-accent) 7%, var(--dshr-soft)); }
-      .dshr-step[data-state="done"]::before { background: var(--dshr-ok); }
-      .dshr-step[data-state="active"]::before { background: var(--dshr-accent); animation: dshr-scan 1.4s ease-in-out infinite; }
-      .dshr-step[data-state="failed"]::before { background: var(--dshr-err); }
-      @keyframes dshr-scan { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
-      .dshr-stepTop { display: flex; align-items: center; gap: 6px; }
-      .dshr-stepLabel { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .dshr-stepMeta { display: block; margin-top: 2px; color: var(--dshr-mute); font-size: 11.5px; font-family: var(--dshr-mono); }
-      .dshr-stepDetail { display: -webkit-box; margin-top: 4px; color: var(--dshr-sub); font-size: 11.5px; line-height: 1.35; white-space: normal; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
-      .dshr-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--dshr-line-strong); border: 2px solid color-mix(in srgb, var(--dshr-accent) 26%, transparent); border-top-color: var(--dshr-accent); animation: dshr-rotate .8s linear infinite; flex-shrink: 0; }
       @keyframes dshr-rotate { to { transform: rotate(360deg) } }
       @media (prefers-reduced-motion: reduce) {
-        .dshr-spin, .dshr-beacon, .dshr-step::before { animation: none !important; }
+        .dshr-spin, .dshr-beacon { animation: none !important; }
       }
 
-      .dshr-offline {
-        display: flex; align-items: center; gap: 10px;
-        margin-top: 12px; padding: 10px 12px;
-        border-radius: 10px;
-        background: var(--dshr-soft);
-        background: color-mix(in srgb, var(--dshr-warn) 9%, var(--dshr-soft));
-        color: var(--dshr-sub); font-size: 12.5px;
-      }
-      .dshr-offline b { color: var(--dshr-text); font-weight: 600; }
-      .dshr-offline .dshr-dotline { margin-left: auto; font-family: var(--dshr-mono); font-size: 12px; color: var(--dshr-mute); }
-
-      .dshr-result { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-      .dshr-resultHead { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-      .dshr-result[data-tone="ok"] .dshr-resultHead { color: var(--dshr-ok); }
-      .dshr-result[data-tone="err"] .dshr-resultHead { color: var(--dshr-err); }
-      .dshr-result[data-tone="warn"] .dshr-resultHead { color: var(--dshr-warn); }
-      .dshr-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; margin: 2px 0 0; }
-      .dshr-kv > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-      .dshr-kv dt { color: var(--dshr-mute); font-size: 11.5px; }
-      .dshr-kv dd { margin: 0; font-family: var(--dshr-mono); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-      .dshr-callout {
-        display: flex; align-items: flex-start; gap: 8px;
-        padding: 10px 12px; border-radius: 10px;
-        background: var(--dshr-soft); color: var(--dshr-sub); font-size: 12.5px;
-      }
-      .dshr-callout[data-tone="err"] { background: var(--dshr-soft); background: color-mix(in srgb, var(--dshr-err) 8%, var(--dshr-soft)); }
-      .dshr-callout[data-tone="warn"] { background: var(--dshr-soft); background: color-mix(in srgb, var(--dshr-warn) 10%, var(--dshr-soft)); }
-      .dshr-callout code { font-family: var(--dshr-mono); font-size: 12px; padding: 1px 4px; border-radius: 4px; background: var(--dshr-sunk); }
-
-      .dshr-cmd { display: flex; align-items: center; gap: 8px; }
-      .dshr-cmd code { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--dshr-sunk); font-family: var(--dshr-mono); font-size: 12px; line-height: 1.5; white-space: normal; word-break: break-all; }
-
-      .dshr-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; }
-      .dshr-section { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
-      .dshr-sectionHead { display: flex; align-items: baseline; gap: 8px; }
-      .dshr-sectionHead h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
-      .dshr-sectionHead span { color: var(--dshr-mute); font-size: 11.5px; }
-
-      .dshr-rows { display: flex; flex-direction: column; margin: 0; }
-      .dshr-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px dashed var(--dshr-line); }
-      .dshr-row:first-child { border-top: 0; padding-top: 0; }
-      .dshr-row:last-child { padding-bottom: 0; }
-      .dshr-row dt { color: var(--dshr-mute); font-size: 12px; flex-shrink: 0; width: 64px; }
-      .dshr-row dd { margin: 0; font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .dshr-row dd.mono { font-family: var(--dshr-mono); }
-
-      .dshr-history { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
-      .dshr-hrow { display: flex; flex-direction: column; gap: 2px; padding: 7px 0; border-top: 1px dashed var(--dshr-line); font-size: 12px; }
-      .dshr-hline { display: flex; align-items: center; gap: 8px; }
-      .dshr-hrow:first-child { border-top: 0; padding-top: 0; }
-      .dshr-hrow:last-child { padding-bottom: 0; }
-      .dshr-hwhen { color: var(--dshr-mute); font-family: var(--dshr-mono); font-size: 11.5px; }
-      .dshr-hwhat { color: var(--dshr-sub); min-width: 0; white-space: normal; word-break: break-word; }
-      .dshr-hms { margin-left: auto; color: var(--dshr-mute); font-family: var(--dshr-mono); font-size: 11.5px; text-align: right; }
-      .dshr-hwhat b { color: var(--dshr-text); font-weight: 500; }
-      .dshr-empty { color: var(--dshr-mute); font-size: 12.5px; padding: 6px 0 2px; }
-
-      .dshr-log {
-        margin: 0; padding: 10px 12px; max-height: 220px; overflow: auto;
-        border-radius: 8px; background: var(--dshr-sunk);
-        color: var(--dshr-sub); font-family: var(--dshr-mono); font-size: 11.5px; line-height: 1.6;
-        white-space: pre-wrap; word-break: break-all;
-      }
-
-      .dshr-details > summary { cursor: pointer; color: var(--dshr-sub); font-size: 12px; user-select: none; }
-      .dshr-details > summary:hover { color: var(--dshr-text); }
-      .dshr-details[open] > summary { margin-bottom: 8px; }
-
-      .dshr-foot { color: var(--dshr-mute); font-size: 11.5px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
-      .dshr-foot code { font-family: var(--dshr-mono); }
-
-      /* 弹窗被 portal 到 document.body，已经不在 .dshr-root 里：把主题变量再声明一遍，
-         否则 var(--dshr-card) 取不到值、弹窗是透明的。 */
+      /* 弹窗：全页唯一使用阴影的浮层 */
       .dshr-mask {
-        --dshr-card: var(--dsw-alias-bg-layer-1, #ffffff);
-        --dshr-soft: var(--dsw-alias-bg-layer-2, #f4f5f7);
-        --dshr-sunk: var(--dsw-alias-bg-layer-3, #eceef2);
-        --dshr-line: var(--dsw-alias-border-l2, color-mix(in srgb, currentColor 12%, transparent));
-        --dshr-line-strong: var(--dsw-alias-border-l3, color-mix(in srgb, currentColor 20%, transparent));
-        --dshr-text: var(--dsw-alias-label-primary, #111827);
-        --dshr-sub: var(--dsw-alias-label-secondary, #4b5563);
-        --dshr-mute: var(--dsw-alias-label-tertiary, #6b7280);
-        --dshr-accent: var(--dsw-alias-brand-primary, #4f7cff);
-        --dshr-ok: var(--dsw-alias-state-success-primary, #12b76a);
-        --dshr-warn: var(--dsw-alias-state-warn-primary, #f79009);
-        --dshr-err: var(--dsw-alias-state-error-primary, #ef4444);
-        --dshr-radius: var(--dsw-radius-panel, 14px);
-        --dshr-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        position: fixed; inset: 0; z-index: 3000;
-        display: flex; align-items: center; justify-content: center;
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         padding: 20px;
-        background: var(--dsw-alias-bg-mask-1, rgba(15, 18, 26, 0.45));
+        background: color-mix(in srgb, #2b2620 48%, transparent);
         animation: dshr-fade .12s ease-out;
+        font-size: var(--dshr-fs-body);
+        line-height: 1.6;
+        color: var(--dshr-text);
       }
       @keyframes dshr-fade { from { opacity: 0 } to { opacity: 1 } }
       .dshr-modal {
-        width: min(430px, calc(100vw - 32px));
+        width: min(420px, calc(100vw - 32px));
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 20px;
         border: 1px solid var(--dshr-line);
         border-radius: 16px;
         background: var(--dshr-card);
-        box-shadow: var(--dsw-elevation-prominent, 0 24px 60px rgba(0, 0, 0, .28));
-        padding: 20px 20px 16px;
-        display: flex; flex-direction: column; gap: 12px;
+        box-shadow: 0 18px 50px color-mix(in srgb, #2b2620 28%, transparent);
         color: var(--dshr-text);
       }
-      .dshr-modal h2 { margin: 0; font-size: 16px; font-weight: 600; }
-      .dshr-modal p { margin: 0; color: var(--dshr-sub); font-size: 12.5px; }
-      .dshr-modalList { margin: 0; padding: 10px 12px; list-style: none; border-radius: 10px; background: var(--dshr-soft); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-      .dshr-modalList li { display: flex; justify-content: space-between; gap: 12px; }
-      .dshr-modalList span { color: var(--dshr-mute); }
-      .dshr-modalList b { font-family: var(--dshr-mono); font-weight: 500; }
-      .dshr-modalActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+      .dshr-modal h2 {
+        margin: 0;
+        font-size: var(--dshr-fs-title);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .dshr-modal p {
+        margin: 0;
+        color: var(--dshr-sub);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-modalList {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .dshr-modalList li {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-top: 1px solid var(--dshr-line);
+        font-size: var(--dshr-fs-small);
+      }
+      .dshr-modalList li:first-child { border-top: 0; padding-top: 0; }
+      .dshr-modalList li:last-child { padding-bottom: 0; }
+      .dshr-modalList span { color: var(--dshr-sub); flex: 0 0 auto; }
+      .dshr-modalList b {
+        min-width: 0;
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--dshr-mono);
+        font-size: var(--dshr-fs-meta);
+        font-weight: 500;
+      }
+      .dshr-modalActions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 2px;
+      }
 
-      @media (max-width: 767px) {
-        .dshr-root { gap: 12px; padding-bottom: 24px; }
-        .dshr-hero { flex-wrap: wrap; padding: 14px 16px; gap: 12px; }
-        .dshr-heroMeta { white-space: normal; }
-        .dshr-heroActions { width: 100%; }
-        .dshr-heroActions .dshr-btn { width: 100%; height: 40px; }
-        .dshr-steps { grid-template-columns: 1fr; gap: 6px; }
-        .dshr-step { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label meta" "detail detail"; padding: 10px 12px 10px 14px; }
-        .dshr-step::before { left: 0; right: auto; top: 8px; bottom: 8px; width: 3px; height: auto; border-radius: 3px; }
-        .dshr-stepTop { grid-area: label; }
-        .dshr-stepMeta { grid-area: meta; margin: 0; align-self: center; }
-        .dshr-stepDetail { grid-area: detail; }
-        .dshr-cols { grid-template-columns: 1fr; }
-        .dshr-section { padding: 14px 16px; }
+      @media (max-width: 760px) {
+        .dshr-root { gap: 16px; padding-bottom: 32px; }
+        .dshr-status { padding: 16px; }
+        .dshr-statusActions { width: 100%; }
+        .dshr-statusActions .dshr-btn { width: 100%; height: 40px; }
         .dshr-run { padding: 14px 16px; }
-        .dshr-elapsed { margin-left: 0; width: 100%; }
-        .dshr-hms { display: none; }
+        .dshr-panel { padding: 14px 16px; }
+        .dshr-cols { grid-template-columns: minmax(0, 1fr); }
+        .dshr-callout { flex-wrap: wrap; }
+        .dshr-calloutActions { width: 100%; justify-content: flex-end; }
         .dshr-btn { height: 38px; }
+        .dshr-btnSm { height: 30px; }
+        .dshr-hms { display: none; }
+      }
+      @media (max-width: 560px) {
+        .dshr-steps { flex-wrap: wrap; }
+        .dshr-step { flex: 1 1 50%; padding-right: 12px; }
+        .dshr-step:nth-child(2n) { padding-right: 0; }
+        .dshr-step:nth-child(n + 3) { margin-top: 6px; }
       }
     `
 
     // ── 小工具 ──────────────────────────────────────────────────────────
-    function fmtMs(ms) {
+    function fmtDuration(ms) {
       const n = Number(ms) || 0
-      if (!n || n < 0) return '—'
-      if (n < 1000) return Math.max(1, Math.round(n)) + 'ms'
-      const s = n / 1000
-      if (s < 60) return s.toFixed(1) + 's'
-      const m = Math.floor(s / 60)
-      return m + 'm ' + Math.round(s % 60) + 's'
+      if (n < 1000) return '不到 1 秒'
+      const total = Math.round(n / 1000)
+      if (total < 60) return total + ' 秒'
+      const min = Math.floor(total / 60)
+      const sec = total % 60
+      if (min < 60) return sec ? min + ' 分 ' + sec + ' 秒' : min + ' 分钟'
+      const hour = Math.floor(min / 60)
+      const restMin = min % 60
+      return restMin ? hour + ' 小时 ' + restMin + ' 分' : hour + ' 小时'
     }
 
     function fmtUptime(sec) {
-      const n = Math.max(0, Number(sec) || 0)
-      if (n < 60) return n + ' 秒'
+      const n = Math.max(0, Math.floor(Number(sec) || 0))
+      if (n < 60) return '不到 1 分钟'
       if (n < 3600) return Math.floor(n / 60) + ' 分钟'
-      if (n < 86400) return Math.floor(n / 3600) + ' 小时 ' + Math.floor((n % 3600) / 60) + ' 分'
-      return Math.floor(n / 86400) + ' 天 ' + Math.floor((n % 86400) / 3600) + ' 小时'
+      if (n < 86400) {
+        const h = Math.floor(n / 3600)
+        const m = Math.floor((n % 3600) / 60)
+        return m ? h + ' 小时 ' + m + ' 分' : h + ' 小时'
+      }
+      const d = Math.floor(n / 86400)
+      const h = Math.floor((n % 86400) / 3600)
+      return h ? d + ' 天 ' + h + ' 小时' : d + ' 天'
     }
 
-    function fmtClock(iso) {
-      if (!iso) return '—'
-      const d = new Date(iso)
-      if (isNaN(d.getTime())) return '—'
-      return d.toLocaleTimeString('zh-CN', { hour12: false })
+    function pad2(n) {
+      return n < 10 ? '0' + n : String(n)
     }
 
     function fmtStamp(iso) {
@@ -347,26 +644,23 @@ window.__ModuleLoader__.load({
       const d = new Date(iso)
       if (isNaN(d.getTime())) return '—'
       const now = new Date()
-      const sameDay = d.toDateString() === now.toDateString()
-      return sameDay
-        ? d.toLocaleTimeString('zh-CN', { hour12: false })
-        : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+      const time = pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      const days = Math.round((startOfToday - startOfDay) / 86400000)
+      if (days === 0) return '今天 ' + time
+      if (days === 1) return '昨天 ' + time
+      if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + time
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + time
     }
 
-    function ago(iso) {
-      const t = Date.parse(iso || '')
-      if (!t) return ''
-      const sec = Math.max(0, Math.round((Date.now() - t) / 1000))
-      if (sec < 60) return sec + ' 秒前'
-      if (sec < 3600) return Math.floor(sec / 60) + ' 分钟前'
-      if (sec < 86400) return Math.floor(sec / 3600) + ' 小时前'
-      return Math.floor(sec / 86400) + ' 天前'
-    }
-
-    function isRecent(iso, windowMs) {
-      const t = Date.parse(iso || '')
-      if (!t) return false
-      return Date.now() - t < (windowMs || RECENT_MS)
+    function noticeText(code, message) {
+      const map = {
+        BUSY: '已经有一次重启在进行，等它完成后再试。',
+        COOLDOWN: '刚完成一次重启，请稍等几秒再试。',
+        LAUNCH_TIMEOUT: '没能启动重启程序，服务没有受到影响。'
+      }
+      return map[code] || message || ''
     }
 
     async function api(path, options) {
@@ -490,16 +784,16 @@ window.__ModuleLoader__.load({
       return h('span', { className: 'dshr-spin', role: 'status', 'aria-label': '进行中' })
     }
 
-    // ── 弹窗 ────────────────────────────────────────────────────────────
+// ── 弹窗 ────────────────────────────────────────────────────────────
     function ConfirmDialog(props) {
-      const ref = useRef(null)
+      const cancelRef = useRef(null)
       useEffect(() => {
         const onKey = (e) => {
           if (e.key === 'Escape') props.onCancel()
         }
         document.addEventListener('keydown', onKey)
         const timer = setTimeout(() => {
-          const node = ref.current
+          const node = cancelRef.current
           if (node) node.focus()
         }, 30)
         return () => {
@@ -509,31 +803,26 @@ window.__ModuleLoader__.load({
       }, [])
       const sys = props.sys || {}
       const run = props.run || {}
+      const address = addressLabel(Object.assign({}, sys, run))
       const body = h(
         'div',
         { className: 'dshr-mask', onMouseDown: (e) => { if (e.target === e.currentTarget) props.onCancel() } },
         h(
           'div',
           { className: 'dshr-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dshr-confirm-title' },
-          h('h2', { id: 'dshr-confirm-title' }, '重启 dsh web？'),
-          h('p', null, '页面会在几秒内断开，服务恢复后自动回到这里。正在生成中的回复会被中断。'),
+          h('h2', { id: 'dshr-confirm-title' }, '要重启服务吗？'),
+          h('p', null, '正在生成的回复会被中断。页面会断开几秒，连上新服务后自动刷新。'),
           h(
             'ul',
             { className: 'dshr-modalList' },
-            h('li', null, h('span', null, '目标'), h('b', null, targetLabel(Object.assign({}, run, sys)))),
-            h('li', null, h('span', null, '方式'), h('b', null, modeLabel(sys))),
-            h('li', null, h('span', null, '端口'), h('b', null, ':' + (sys.port || run.port || '—'))),
+            h('li', null, h('span', null, '地址'), h('b', { title: address }, address)),
             h('li', null, h('span', null, '当前进程'), h('b', null, String(sys.pid || run.oldPid || '—'))),
           ),
           h(
             'div',
             { className: 'dshr-modalActions' },
-            h('button', { type: 'button', className: 'dshr-btn', onClick: props.onCancel }, '取消'),
-            h(
-              'button',
-              { type: 'button', className: 'dshr-btn dshr-btnDanger', ref: ref, onClick: props.onConfirm },
-              '确认重启',
-            ),
+            h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost', ref: cancelRef, onClick: props.onCancel }, '取消'),
+            h('button', { type: 'button', className: 'dshr-btn dshr-btnPrimary', onClick: props.onConfirm }, '重启'),
           ),
         ),
       )
@@ -541,29 +830,48 @@ window.__ModuleLoader__.load({
       return body
     }
 
-    // ── 时间线 ──────────────────────────────────────────────────────────
+    // ── 进度 ────────────────────────────────────────────────────────────
+    const STEP_LABELS = { preflight: '准备', restart: '重启服务', ready: '等待启动', verify: '检查连接' }
+    const STEP_TITLES = {
+      preflight: '正在检查运行环境',
+      restart: '正在启动新服务',
+      ready: '正在等待新服务启动',
+      verify: '正在确认连接正常',
+    }
+
     function StepList(props) {
       const steps = props.steps || []
-      const now = props.now
       return h(
         'ol',
-        { className: 'dshr-steps', 'aria-label': '重启阶段' },
+        { className: 'dshr-steps', 'aria-label': '重启进度' },
         steps.map((step) => {
           const state = step.status === 'done' ? 'done' : step.status === 'active' ? 'active' : step.status === 'failed' ? 'failed' : 'pending'
-          let meta = '—'
-          if (state === 'done' || state === 'failed') meta = fmtMs(step.ms)
-          else if (state === 'active' && step.startedAt) meta = fmtMs(Math.max(0, now - Date.parse(step.startedAt)))
+          const marker =
+            state === 'active'
+              ? h(Spinner)
+              : state === 'done'
+                ? h(Icon, { name: 'check', size: 12 })
+                : state === 'failed'
+                  ? h(Icon, { name: 'cross', size: 12 })
+                  : h('span', {
+                      style: {
+                        width: 12,
+                        height: 12,
+                        borderRadius: 999,
+                        border: '1.5px solid var(--dshr-line-strong)',
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      },
+                    })
           return h(
             'li',
             { key: step.id, className: 'dshr-step', 'data-state': state },
             h(
               'div',
               { className: 'dshr-stepTop' },
-              state === 'active' ? h(Spinner) : state === 'done' ? h(Icon, { name: 'check', size: 12 }) : state === 'failed' ? h(Icon, { name: 'cross', size: 12 }) : h('span', { style: { width: 12, height: 12, borderRadius: 999, border: '1.5px solid var(--dshr-line-strong)', display: 'inline-block' } }),
-              h('span', { className: 'dshr-stepLabel' }, step.label || step.id),
+              marker,
+              h('span', { className: 'dshr-stepLabel' }, STEP_LABELS[step.id] || step.label || step.id),
             ),
-            h('span', { className: 'dshr-stepMeta' }, meta),
-            step.detail ? h('span', { className: 'dshr-stepDetail', title: step.detail }, step.detail) : null,
           )
         }),
       )
@@ -585,7 +893,6 @@ window.__ModuleLoader__.load({
       const [reloadAt, setReloadAt] = useState(0)
       const [dismissed, setDismissed] = useState('')
       const [copied, setCopied] = useState('')
-      const [showLog, setShowLog] = useState(false)
       const inflight = useRef(false)
 
       const refresh = useCallback(async () => {
@@ -647,7 +954,7 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (!pending || pending.runId || connLost) return
         const timer = setTimeout(() => {
-          setNotice({ code: 'NO_ACK', message: '没有收到受理确认', hint: '请求可能没有送达。点「刷新」再看一次状态；如果服务确实重启了，这里会自动出现记录。' })
+          setNotice({ code: 'NO_ACK', message: '没有收到受理确认', hint: '请求可能没有送达。稍等片刻再试；如果服务确实重启了，这里会自动显示结果。' })
           setPending(null)
         }, 15000)
         return () => clearTimeout(timer)
@@ -719,7 +1026,8 @@ window.__ModuleLoader__.load({
       }, [sys, refresh])
 
       const onCopy = useCallback((text, key) => {
-        setCopied(copyText(text) ? key : '')
+        const ok = copyText(text)
+        setCopied(ok ? key : '')
         setTimeout(() => setCopied(''), 1600)
       }, [])
 
@@ -727,166 +1035,179 @@ window.__ModuleLoader__.load({
       const lastDone = run && run.status === 'done' ? run : null
       const lastFailed = run && run.status === 'failed' ? run : null
 
-      // 执行器没拉起来 ⇒ 服务根本没动，不该展示成一次"重启失败"（服务还好好的）。
+      // 执行器没拉起来 ⇒ 服务根本没动，不该展示成一次“重启失败”（服务还好好的）。
       const launchFailed = !!lastFailed && !!(lastFailed.error && lastFailed.error.code === 'LAUNCH_TIMEOUT')
       const showLive = active || (!!pending && !run)
       const showResult = !active && !launchFailed && ((lastDone && (isMine || (sys && lastDone.newPid === sys.pid))) || !!lastFailed)
-      const heroTone = connLost ? 'down' : active || pending ? 'busy' : lastFailed && !launchFailed && isRecent(lastFailed.finishedAt, 60 * 60 * 1000) ? 'warn' : 'ok'
+      const loading = !snap && !connLost
+      const heroTone = connLost ? 'down' : active || pending || loading ? 'busy' : 'ok'
       const heroTitle = connLost
-        ? '服务连接中断'
+        ? '连接已断开'
         : active
-          ? '正在重启 dsh web'
+          ? '正在重启服务'
           : pending
             ? '正在提交重启请求'
-            : 'dsh web 运行中'
-      const heroMeta = sys
-        ? 'PID ' + sys.pid + ' · 已运行 ' + fmtUptime(sys.uptimeSec) + ' · 端口 ' + sys.port + ' · 内存 ' + sys.rssMB + ' MB'
-        : connLost
-          ? '等待服务恢复，页面会自动重试'
-          : '正在读取状态…'
+            : loading
+              ? '正在读取状态'
+              : '运行正常'
+      const heroMeta = connLost
+        ? active
+          ? '重启还在进行，恢复后本页会自动更新。'
+          : '正在重试连接，服务恢复后本页会自动更新。'
+        : active
+          ? '页面会自动刷新，不用手动操作。'
+          : pending
+            ? '正在等待服务受理。'
+            : sys
+              ? '已运行 ' + fmtUptime(sys.uptimeSec) + '，占用 ' + sys.rssMB + ' MB 内存'
+              : ''
       const currentStep = active && run ? (run.steps || []).find((s) => s.status === 'active') : null
-      const stepTitle = currentStep
-        ? currentStep.label
-        : run && run.status === 'queued'
-          ? '已受理，等待执行器'
-          : '准备下一次尝试'
+      const liveTitle =
+        pending && !run
+          ? '请求已发出'
+          : run && run.status === 'queued'
+            ? '已受理，等待开始'
+            : currentStep
+              ? STEP_TITLES[currentStep.id] || '正在重启服务'
+              : '正在重启服务'
       const busy = active || !!pending
+      const restartLabel = active ? '正在重启' : pending ? '正在提交' : '重启服务'
+      const noticeTone = notice && ['BUSY', 'COOLDOWN', 'NO_ACK', 'LAUNCH_TIMEOUT'].indexOf(notice.code) >= 0 ? 'warn' : 'err'
 
       const renderRunCard = () => {
         if (showResult && lastDone) {
+          const took = (Date.parse(lastDone.finishedAt) || 0) - (Date.parse(lastDone.startedAt) || 0)
+          const secondsLeft = reloadAt ? Math.max(0, Math.ceil((reloadAt - now) / 1000)) : 0
           return h(
             'section',
-            { className: 'dshr-card dshr-run', 'data-tone': 'ok' },
+            { className: 'dshr-card dshr-run', role: 'status' },
             h(
               'div',
-              { className: 'dshr-result', style: { marginTop: 0 } },
+              { className: 'dshr-runHead' },
+              h('span', { className: 'dshr-runIcon', 'data-tone': 'ok' }, h(Icon, { name: 'check', size: 16 })),
+              h('div', { className: 'dshr-runText' }, h('div', { className: 'dshr-runTitle' }, '重启完成')),
               h(
                 'div',
-                { className: 'dshr-resultHead' },
-                h(Icon, { name: 'check', size: 16 }),
-                h('span', null, '重启完成'),
-                h('span', { className: 'dshr-tag', 'data-tone': 'ok' }, fmtMs((Date.parse(lastDone.finishedAt) || 0) - (Date.parse(lastDone.startedAt) || 0))),
-                h('span', { className: 'dshr-runId' }, lastDone.runId),
-                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', style: { marginLeft: 'auto' }, onClick: () => setDismissed(lastDone.runId) }, '收起'),
+                { className: 'dshr-runActions' },
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setDismissed(lastDone.runId) }, '收起'),
               ),
-              h(
-                'dl',
-                { className: 'dshr-kv' },
-                h('div', null, h('dt', null, '新进程'), h('dd', null, 'PID ' + (lastDone.newPid || '—'))),
-                h('div', null, h('dt', null, '监听端口'), h('dd', null, ':' + lastDone.port + (sys && lastDone.newPid === sys.pid ? '（当前连接）' : ''))),
-                h('div', null, h('dt', null, '尝试次数'), h('dd', null, lastDone.attempt + ' / ' + lastDone.maxAttempts)),
-                h('div', null, h('dt', null, '完成方式'), h('dd', null, lastDone.fallback ? '兜底直接启动' : lastDone.degraded ? 'HTTP 恢复（无握手）' : '执行器 + 启动握手')),
-                h('div', null, h('dt', null, '完成时间'), h('dd', null, fmtStamp(lastDone.finishedAt))),
-              ),
-              lastDone.steps && lastDone.steps.length ? h(StepList, { steps: lastDone.steps, now }) : null,
+            ),
+            h(
+              'div',
+              { className: 'dshr-runBody' },
               lastDone.degraded
                 ? h(
                     'div',
                     { className: 'dshr-callout', 'data-tone': 'warn' },
-                    h(Icon, { name: 'warn', size: 14 }),
-                    h('span', null, '服务已恢复，但新实例没有回报启动标记——插件可能未加载或页面未刷新，建议手动刷新一次。'),
+                    h(Icon, { name: 'warn', size: 15 }),
+                    h('div', { className: 'dshr-calloutBody' }, h('div', { className: 'dshr-calloutTitle' }, '服务已恢复，但页面可能还是旧的。')),
+                    h(
+                      'div',
+                      { className: 'dshr-calloutActions' },
+                      h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => window.location.reload() }, '刷新页面'),
+                    ),
                   )
                 : null,
               reloadAt
                 ? h(
                     'div',
-                    { className: 'dshr-callout' },
+                    { className: 'dshr-callout', 'data-tone': 'busy', role: 'status' },
                     h(Spinner),
-                    h('span', null, h('b', null, '已连接到新实例'), '，页面将在 ' + Math.max(0, Math.ceil((reloadAt - now) / 1000)) + ' 秒后自动刷新。'),
-                    h('span', { style: { marginLeft: 'auto', display: 'flex', gap: 6 } },
-                      h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => window.location.reload() }, '立即刷新'),
-                      h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setReloadAt(0) }, '取消'),
+                    h(
+                      'div',
+                      { className: 'dshr-calloutBody' },
+                      h('div', null, secondsLeft > 0 ? '已连上新服务，' + secondsLeft + ' 秒后自动刷新页面。' : '已连上新服务，正在刷新页面…'),
+                    ),
+                    h(
+                      'div',
+                      { className: 'dshr-calloutActions' },
+                      h('button', { type: 'button', className: 'dshr-btn dshr-btnPrimary dshr-btnSm', onClick: () => window.location.reload() }, '现在刷新'),
+                      h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setReloadAt(0) }, '暂不刷新'),
                     ),
                   )
-                : h('p', { className: 'dshr-hint' }, lastDone.note || '服务已恢复，页面连接正常。'),
+                : null,
+              h(
+                'dl',
+                { className: 'dshr-rows' },
+                row('新进程', lastDone.newPid ? String(lastDone.newPid) : '—', true),
+                row('监听端口', lastDone.port ? ':' + lastDone.port : '—', true),
+                row('用时', took > 0 ? fmtDuration(took) : '—'),
+                row('完成时间', fmtStamp(lastDone.finishedAt)),
+                lastDone.attempt > 1 ? row('尝试次数', lastDone.attempt + ' 次') : null,
+              ),
+              lastDone.fallback ? h('p', { className: 'dshr-hint' }, lastDone.note || '服务已直接启动，没有交给 systemd 管理。') : null,
             ),
           )
         }
         if (showResult && lastFailed) {
           const err = lastFailed.error || {}
+          const diag = diagCommand({ unit: lastFailed.unit || (sys && sys.unit), manager: lastFailed.manager || (sys && sys.manager), dataDir: sys && sys.dataDir })
           return h(
             'section',
-            { className: 'dshr-card dshr-run', 'data-tone': 'err' },
+            { className: 'dshr-card dshr-run', role: 'alert' },
             h(
               'div',
-              { className: 'dshr-result', style: { marginTop: 0 } },
+              { className: 'dshr-runHead' },
+              h('span', { className: 'dshr-runIcon', 'data-tone': 'err' }, h(Icon, { name: 'cross', size: 16 })),
+              h('div', { className: 'dshr-runText' }, h('div', { className: 'dshr-runTitle' }, '重启失败')),
               h(
                 'div',
-                { className: 'dshr-resultHead' },
-                h(Icon, { name: 'cross', size: 16 }),
-                h('span', null, '重启失败'),
-                h('span', { className: 'dshr-tag', 'data-tone': 'err' }, err.code || 'FAILED'),
-                h('span', { className: 'dshr-runId' }, lastFailed.runId),
-                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', style: { marginLeft: 'auto' }, onClick: () => setDismissed(lastFailed.runId) }, '收起'),
+                { className: 'dshr-runActions' },
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setDismissed(lastFailed.runId) }, '收起'),
               ),
-              lastFailed.steps && lastFailed.steps.length ? h(StepList, { steps: lastFailed.steps, now }) : null,
-              h('p', { className: 'dshr-hint', style: { color: 'var(--dshr-text)' } }, err.message || '重启没有完成'),
+            ),
+            h(
+              'div',
+              { className: 'dshr-runBody' },
+              h('p', { className: 'dshr-hint', style: { color: 'var(--dshr-text)' } }, err.message || '这次重启没有完成。'),
               err.hint ? h('p', { className: 'dshr-hint' }, err.hint) : null,
-              err.detail ? h('pre', { className: 'dshr-log', style: { maxHeight: 120 } }, err.detail) : null,
               h(
                 'div',
-                { className: 'dshr-cmd' },
-                h('code', null, diagCommand({ unit: lastFailed.unit || (sys && sys.unit), manager: lastFailed.manager || (sys && sys.manager), dataDir: sys && sys.dataDir })),
-                h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy(diagCommand({ unit: lastFailed.unit || (sys && sys.unit), manager: lastFailed.manager || (sys && sys.manager), dataDir: sys && sys.dataDir }), 'status') }, copied === 'status' ? '已复制' : '复制'),
+                { style: { display: 'flex', gap: 8 } },
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnPrimary dshr-btnSm', onClick: () => setConfirmOpen(true) }, '重试'),
               ),
               h(
-                'div',
-                { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-                h('button', { type: 'button', className: 'dshr-btn dshr-btnPrimary', onClick: () => setConfirmOpen(true) }, '重试重启'),
-                snap && snap.logTail
-                  ? h(
-                      'details',
-                      { className: 'dshr-details', open: showLog, onToggle: (e) => setShowLog(!!e.currentTarget.open) },
-                      h('summary', null, '执行器日志'),
-                      h('pre', { className: 'dshr-log' }, snap.logTail),
-                    )
-                  : null,
+                'details',
+                { className: 'dshr-details' },
+                h('summary', null, '技术详情'),
+                err.code ? h('dl', { className: 'dshr-rows' }, row('错误码', err.code, true)) : null,
+                err.detail ? h('pre', { className: 'dshr-log' }, err.detail) : null,
+                h(
+                  'div',
+                  { className: 'dshr-cmd' },
+                  h('code', null, diag),
+                  h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy(diag, 'diag') }, copied === 'diag' ? '已复制' : '复制'),
+                ),
+                snap && snap.logTail ? h('pre', { className: 'dshr-log' }, snap.logTail) : null,
               ),
             ),
           )
         }
         if (showLive) {
+          const metaParts = []
+          if (run && run.attempt > 1) metaParts.push('第 ' + run.attempt + ' 次尝试')
+          if (connLost) metaParts.push('连接暂时中断')
+          else if (elapsed >= 1000) metaParts.push('已用时 ' + fmtDuration(elapsed))
           return h(
             'section',
-            { className: 'dshr-card dshr-run', 'data-tone': 'busy' },
+            { className: 'dshr-card dshr-run', role: 'status' },
             h(
               'div',
               { className: 'dshr-runHead' },
               h(Spinner),
-              h('span', { className: 'dshr-runTitle' }, stepTitle),
-              active ? h('span', { className: 'dshr-tag', 'data-tone': 'busy' }, '第 ' + run.attempt + ' / ' + run.maxAttempts + ' 次尝试') : null,
-              h('span', { className: 'dshr-elapsed' }, connLost ? '等待响应 · ' + fmtMs(offlineFor) : fmtMs(elapsed)),
-              run ? h('span', { className: 'dshr-runId' }, run.runId) : null,
+              h(
+                'div',
+                { className: 'dshr-runText' },
+                h('div', { className: 'dshr-runTitle' }, liveTitle),
+                metaParts.length ? h('div', { className: 'dshr-runMeta' }, metaParts.join('，')) : null,
+              ),
             ),
-            active ? h(StepList, { steps: run.steps, now }) : h('p', { className: 'dshr-hint' }, '已写入受理记录，正在等待独立执行器接管…'),
-            active && run && run.attempts && run.attempts.length
-              ? h(
-                  'p',
-                  { className: 'dshr-hint' },
-                  '此前失败：' +
-                    run.attempts
-                      .filter((a) => !a.ok)
-                      .map((a) => '第 ' + a.n + ' 次 ' + (a.code || ''))
-                      .join('、'),
-                )
-              : null,
-            connLost
-              ? h(
-                  'div',
-                  { className: 'dshr-offline' },
-                  h(Spinner),
-                  h('span', null, h('b', null, '连接已断开'), '，这是重启过程的正常阶段。服务恢复后本页会自动接上。'),
-                  h('span', { className: 'dshr-dotline' }, '等待 ' + fmtMs(offlineFor)),
-                )
-              : h('p', { className: 'dshr-hint' }, '执行器已脱离 dsh-web 的 cgroup，因此进程被杀后仍能继续完成重启与自检。'),
             h(
               'div',
-              { style: { display: 'flex', gap: 14, marginTop: 10, flexWrap: 'wrap' } },
-              h('span', { className: 'dshr-small' }, '预计 8–20 秒'),
-              h('span', { className: 'dshr-small' }, '端口 ' + (run ? run.port : sys ? sys.port : '—')),
-              snap && snap.live && snap.live.heartbeatAgeMs >= 0
-                ? h('span', { className: 'dshr-small' }, '执行器心跳 ' + fmtMs(snap.live.heartbeatAgeMs) + ' 前')
-                : null,
+              { className: 'dshr-runBody' },
+              active && run.steps && run.steps.length
+                ? h(StepList, { steps: run.steps })
+                : h('p', { className: 'dshr-hint' }, '请求已发出，正在等待服务受理。'),
             ),
           )
         }
@@ -896,6 +1217,8 @@ window.__ModuleLoader__.load({
       const runCard = renderRunCard()
       const showRunCard = runCard && !(dismissed && run && dismissed === run.runId)
 
+      const history = snap && snap.history ? snap.history.slice(0, 8) : []
+
       return h(
         'div',
         { className: 'dshr-root' },
@@ -903,45 +1226,36 @@ window.__ModuleLoader__.load({
           'header',
           { className: 'dshr-head' },
           h('h1', null, '服务与重启'),
-          h('p', null, '查看 dsh web 进程状态，触发一次可追踪、可恢复的重启。'),
+          h('p', null, '查看 dsh web 的运行状态，需要时重启。'),
         ),
 
         h(
           'section',
-          { className: 'dshr-card dshr-hero' },
+          { className: 'dshr-card dshr-status' },
           h(
             'div',
-            { className: 'dshr-heroLead' },
+            { className: 'dshr-statusLead' },
             h('span', { className: 'dshr-beacon', 'data-tone': heroTone }),
             h(
               'div',
-              { className: 'dshr-heroText' },
-              h(
-                'div',
-                { className: 'dshr-heroTitle' },
-                heroTitle,
-                connLost
-                  ? h('span', { className: 'dshr-tag', 'data-tone': 'err' }, '离线')
-                  : active || pending
-                    ? h('span', { className: 'dshr-tag', 'data-tone': 'busy' }, '重启中')
-                    : h('span', { className: 'dshr-tag', 'data-tone': 'ok' }, '运行中'),
-              ),
-              h('div', { className: 'dshr-heroMeta' }, heroMeta),
+              { style: { minWidth: 0 } },
+              h('div', { className: 'dshr-statusTitle' }, heroTitle),
+              heroMeta ? h('div', { className: 'dshr-statusMeta' }, heroMeta) : null,
             ),
           ),
           h(
             'div',
-            { className: 'dshr-heroActions' },
+            { className: 'dshr-statusActions' },
             h(
               'button',
               {
                 type: 'button',
                 className: 'dshr-btn dshr-btnPrimary',
-                disabled: busy,
+                disabled: busy || loading || connLost,
                 onClick: () => setConfirmOpen(true),
               },
               h(Icon, { name: 'refresh', size: 14 }),
-              h('span', { style: { marginLeft: 6 } }, active ? '重启中…' : busy ? '提交中…' : '重启 dsh web'),
+              h('span', null, restartLabel),
             ),
           ),
         ),
@@ -949,15 +1263,19 @@ window.__ModuleLoader__.load({
         notice
           ? h(
               'section',
-              { className: 'dshr-callout', 'data-tone': 'err', role: 'alert' },
+              { className: 'dshr-callout', 'data-tone': noticeTone, role: 'alert' },
               h(Icon, { name: 'warn', size: 15 }),
               h(
                 'div',
-                { style: { flex: 1, minWidth: 0 } },
-                h('div', { style: { color: 'var(--dshr-text)', fontWeight: 600 } }, (notice.code ? notice.code + ' · ' : '') + (notice.message || '触发失败')),
-                notice.hint ? h('div', { style: { marginTop: 2 } }, notice.hint) : null,
+                { className: 'dshr-calloutBody' },
+                h('div', { className: 'dshr-calloutTitle' }, noticeText(notice.code, notice.message) || '触发失败'),
+                notice.hint ? h('div', { className: 'dshr-calloutHint' }, notice.hint) : null,
               ),
-              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => setNotice(null), 'aria-label': '关闭提示' }, '关闭'),
+              h(
+                'div',
+                { className: 'dshr-calloutActions' },
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setNotice(null) }, '关闭'),
+              ),
             )
           : null,
 
@@ -968,130 +1286,89 @@ window.__ModuleLoader__.load({
               h(Icon, { name: 'warn', size: 15 }),
               h(
                 'div',
-                { style: { flex: 1, minWidth: 0 } },
-                h('div', { style: { color: 'var(--dshr-text)', fontWeight: 600 } }, '没能触发重启 · 服务未受影响'),
+                { className: 'dshr-calloutBody' },
+                h('div', { className: 'dshr-calloutTitle' }, '没能触发重启，服务没有受到影响。'),
+                h('div', { className: 'dshr-calloutHint' }, '可以再试一次，或展开详情看看原因。'),
                 h(
-                  'div',
-                  { style: { marginTop: 2 } },
-                  (lastFailed.error.detail || lastFailed.error.message || '执行器没有启动') + '。可以重试，或检查 systemd-run 是否可用。',
+                  'details',
+                  { className: 'dshr-details' },
+                  h('summary', null, '技术详情'),
+                  h('dl', { className: 'dshr-rows' }, row('错误码', (lastFailed.error && lastFailed.error.code) || 'LAUNCH_TIMEOUT', true)),
+                  lastFailed.error && lastFailed.error.detail ? h('pre', { className: 'dshr-log' }, lastFailed.error.detail) : null,
                 ),
               ),
-              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: trigger, disabled: busy }, '重试'),
-              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => setDismissed(run.runId) }, '关闭'),
+              h(
+                'div',
+                { className: 'dshr-calloutActions' },
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: trigger, disabled: busy }, '重试'),
+                h('button', { type: 'button', className: 'dshr-btn dshr-btnGhost dshr-btnSm', onClick: () => setDismissed(run.runId) }, '关闭'),
+              ),
             )
           : null,
 
         showRunCard ? runCard : null,
 
-        h(
-          'div',
-          { className: 'dshr-cols' },
-          h(
-            'section',
-            { className: 'dshr-card dshr-section' },
-            h(
-              'div',
-              { className: 'dshr-sectionHead' },
-              h('h2', null, '运行状态'),
-              h('span', null, connLost ? '连接中断' : '实时'),
-            ),
-            h(
-              'dl',
-              { className: 'dshr-rows' },
-              row('进程', sys ? String(sys.pid) : '—', true),
-              row('监听', sys ? endpointLabel(sys) : '—', true),
-              row('模式', sys ? modeLabel(sys) : '—', true),
-              row('单元', sys ? (sys.unit || '—') : '—', true),
-              row('版本', sys ? sys.dshVersion : '—', true),
-              row('运行时', sys ? 'Node ' + String(sys.nodeVersion).replace(/^v/, '') + ' · ' + sys.platform + '/' + sys.arch : '—'),
-              row('内存', sys ? sys.rssMB + ' MB' : '—'),
-              row('进程启动于', sys ? fmtStamp(sys.startedAt) : '—'),
-              row('插件启动于', sys && sys.bootAt ? fmtStamp(sys.bootAt) : '—'),
-              snap && snap.live && (snap.live.runnerPid || active)
-                ? row('执行器', snap.live.runnerAlive ? 'PID ' + snap.live.runnerPid + ' · 心跳 ' + fmtMs(snap.live.heartbeatAgeMs) : snap.live.heartbeatStale ? '心跳中断' : '未运行', true)
-                : row(
-                    '上次重启',
-                    lastDone
-                      ? '成功 · ' + ago(lastDone.finishedAt)
-                      : lastFailed
-                        ? (launchFailed ? '未触发 · ' : '失败 · ') + ago(lastFailed.finishedAt)
-                        : '无记录',
-                  ),
-            ),
-            connLost
-              ? h('p', { className: 'dshr-hint' }, '状态已停止更新，正在重试连接…')
-              : h('p', { className: 'dshr-hint' }, '重启会中断当前所有进行中的回复；页面会在服务恢复后自动刷新。'),
-          ),
-
-          h(
-            'section',
-            { className: 'dshr-card dshr-section' },
-            h(
-              'div',
-              { className: 'dshr-sectionHead' },
-              h('h2', null, '最近重启'),
-              h('span', null, snap && snap.history && snap.history.length ? '最近 ' + snap.history.length + ' 条' : '暂无'),
-            ),
-            snap && snap.history && snap.history.length
-              ? h(
-                  'ul',
-                  { className: 'dshr-history' },
-                  snap.history.slice(0, 8).map((item) =>
-                    h(
-                      'li',
-                      { key: item.runId, className: 'dshr-hrow' },
-                      h(
-                        'span',
-                        { className: 'dshr-hline' },
-                        h('span', { className: 'dshr-hwhen' }, fmtStamp(item.at)),
-                        h(
-                          'span',
-                          { className: 'dshr-tag', 'data-tone': item.ok ? 'ok' : item.code === 'LAUNCH_TIMEOUT' ? 'warn' : 'err' },
-                          item.ok ? '成功' : item.code === 'LAUNCH_TIMEOUT' ? '未触发' : '失败',
-                        ),
-                        h('span', { className: 'dshr-hms' }, fmtMs(item.ms)),
-                      ),
-                      h(
-                        'span',
-                        { className: 'dshr-hwhat', title: item.code || item.note || '' },
-                        item.ok
-                          ? h('span', null, 'PID ' + (item.oldPid || '—') + ' → ', h('b', null, String(item.newPid || '—')), item.fallback ? ' · 兜底启动' : item.degraded ? ' · 降级完成' : '')
-                          : h('span', null, (item.code || '失败') + (item.attempts ? ' · ' + item.attempts + ' 次尝试' : '')),
-                      ),
-                    ),
-                  ),
-                )
-              : h('p', { className: 'dshr-empty' }, '还没有通过此插件重启过。点右上角按钮开始第一次。'),
-            h(
-              'div',
-              { className: 'dshr-cmd' },
-              h('code', null, diagCommand(sys)),
-              h('button', { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: () => onCopy(diagCommand(sys), 'status2') }, copied === 'status2' ? '已复制' : '复制'),
-              h(
-                'button',
-                { type: 'button', className: 'dshr-btn dshr-btnSm', onClick: refresh },
-                '刷新',
-              ),
-            ),
-          ),
-        ),
-
-        showLog && snap && snap.logTail
+        sys
           ? h(
-              'section',
-              { className: 'dshr-card dshr-section' },
-              h('div', { className: 'dshr-sectionHead' }, h('h2', null, '执行器日志'), h('span', null, '尾部 6 KB')),
-              h('pre', { className: 'dshr-log' }, snap.logTail),
+              'div',
+              { className: 'dshr-cols' },
+              h(
+                'section',
+                { className: 'dshr-card dshr-panel' },
+                h(
+                  'div',
+                  { className: 'dshr-panelHead' },
+                  h('h2', null, '服务'),
+                  connLost ? h('span', null, '断开前的状态') : null,
+                ),
+                h(
+                  'dl',
+                  { className: 'dshr-rows' },
+                  row('地址', addressLabel(sys), true),
+                  row('进程', String(sys.pid), true),
+                  row('版本', sys.dshVersion || '—', true),
+                ),
+                h(
+                  'details',
+                  { className: 'dshr-details dshr-more' },
+                  h('summary', null, '更多信息'),
+                  h(
+                    'dl',
+                    { className: 'dshr-rows' },
+                    row('启动方式', modeLabel(sys)),
+                    row('服务单元', sys.unit || '无', true),
+                    row('Node', sys.nodeVersion ? String(sys.nodeVersion).replace(/^v/, '') : '—'),
+                    row('系统', sys.platform + ' / ' + sys.arch),
+                    row('数据目录', sys.dataDir, true),
+                  ),
+                ),
+              ),
+              h(
+                'section',
+                { className: 'dshr-card dshr-panel' },
+                h('div', { className: 'dshr-panelHead' }, h('h2', null, '最近重启')),
+                history.length
+                  ? h(
+                      'ul',
+                      { className: 'dshr-history' },
+                      history.map((item) =>
+                        h(
+                          'li',
+                          { key: item.runId, className: 'dshr-hrow', title: item.code || item.note || '' },
+                          h('span', { className: 'dshr-hwhen' }, fmtStamp(item.at)),
+                          h(
+                            'span',
+                            { className: 'dshr-tag', 'data-tone': item.ok ? 'ok' : item.code === 'LAUNCH_TIMEOUT' ? 'warn' : 'err' },
+                            item.ok ? '成功' : item.code === 'LAUNCH_TIMEOUT' ? '未触发' : '失败',
+                          ),
+                          h('span', { className: 'dshr-hms' }, item.ms ? fmtDuration(item.ms) : '—'),
+                        ),
+                      ),
+                    )
+                  : h('p', { className: 'dshr-empty' }, '还没有重启记录。'),
+              ),
             )
           : null,
-
-        h(
-          'footer',
-          { className: 'dshr-foot' },
-          h('span', null, '数据目录 ', h('code', null, sys ? sys.dataDir : '…')),
-          h('span', null, '重启流程：预检 → systemctl restart → 启动握手 → 端口校验 → 失败重试 → 兜底启动'),
-          lastDone ? h('span', null, '上次成功 ', ago(lastDone.finishedAt), ' · 耗时 ', fmtMs((Date.parse(lastDone.finishedAt) || 0) - (Date.parse(lastDone.startedAt) || 0))) : null,
-        ),
 
         confirmOpen ? h(ConfirmDialog, { sys, run, onCancel: () => setConfirmOpen(false), onConfirm: trigger }) : null,
       )

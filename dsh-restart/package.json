@@ -1,6 +1,6 @@
 {
   "name": "dsh-restart",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "dsh web 受控重启：自动识别 systemd/裸跑、独立执行器、阶段化进度、失败现场与运行状态",
