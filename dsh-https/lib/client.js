@@ -6,58 +6,495 @@ window.__ModuleLoader__.load({
     var module = { exports: {} };
     var exports = module.exports;
     var React = require("react");
+    var h = React.createElement;
 
-    var SECTION = { id: "dsh-https", label: "HTTPS 接入", order: 60, title: "HTTPS 接入", desc: "为 dsh web 提供 TLS 终止入口、证书状态与自动续期" };
+    var SECTION = {
+      id: "dsh-https",
+      label: "HTTPS 接入",
+      order: 60,
+      title: "HTTPS 接入",
+      desc: "网站地址、证书与访问密码",
+    };
     var API = "/api/dsh-https";
     var CSS_TAG = "dsh-https/style";
 
-    var CSS = [
-      ".dsh-https-page{display:flex;flex-direction:column;width:100%;max-width:820px;min-width:0;margin:0 auto;padding:0 24px 32px;box-sizing:border-box}",
-      ".dsh-https-head{display:flex;flex-direction:column;gap:2px;padding:16px 0 2px;flex:none}",
-      ".dsh-https-title{font-size:14px;font-weight:400;color:var(--dsw-alias-label-primary,#0f1115);line-height:22px}",
-      ".dsh-https-desc{font-size:12px;color:var(--dsw-alias-label-secondary,#61666b);line-height:20px}",
-      ".dsh-https-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0 12px;flex:none;flex-wrap:wrap}",
-      ".dsh-https-muted{font-size:11px;color:var(--dsw-alias-label-secondary,#61666b)}",
-      ".dsh-https-card{border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.15));border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff);margin:0 0 12px;overflow:hidden;min-width:0}",
-      ".dsh-https-cardHead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;flex-wrap:wrap;min-width:0}",
-      ".dsh-https-cardTitle{font-size:14px;font-weight:400;color:var(--dsw-alias-label-primary,#0f1115);line-height:22px}",
-      ".dsh-https-cardBody{padding:0 16px 14px;display:flex;flex-direction:column;gap:8px}",
-      ".dsh-https-row{display:flex;gap:10px;align-items:baseline;font-size:12px;line-height:20px;min-width:0}",
-      ".dsh-https-key{color:var(--dsw-alias-label-secondary,#61666b);flex:none;min-width:76px}",
-      ".dsh-https-val{color:var(--dsw-alias-label-primary,#0f1115);min-width:0;overflow-wrap:anywhere}",
-      ".dsh-https-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:18px}",
-      ".dsh-https-badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11px;line-height:20px;border:1px solid transparent;white-space:nowrap}",
-      ".dsh-https-badge-ok{color:#0a6b3d;background:#e8f7ef;border-color:#bfe8d2}",
-      ".dsh-https-badge-warn{color:#8a5a00;background:#fff6df;border-color:#f2dfb0}",
-      ".dsh-https-badge-bad{color:#a12a2a;background:#fdecec;border-color:#f3c9c9}",
-      ".dsh-https-badge-info{color:#2b4f8a;background:#edf3ff;border-color:#cddcf7}",
-      ".dsh-https-btns{display:flex;gap:8px;flex-wrap:wrap}",
-      ".dsh-https-btn{appearance:none;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.2));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#0f1115);border-radius:999px;height:30px;padding:0 14px;font-size:12px;cursor:pointer}",
-      ".dsh-https-btn:hover{background:var(--dsw-alias-bg-layer-2,#f5f5f5)}",
-      ".dsh-https-btn:disabled{opacity:.45;cursor:not-allowed}",
-      ".dsh-https-btn-primary{background:#0f1115;color:#fff;border-color:#0f1115}",
-      ".dsh-https-btn-primary:hover{background:#2a2d33}",
-      ".dsh-https-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}",
-      ".dsh-https-url{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}",
-      ".dsh-https-url a{color:var(--dsw-alias-brand-primary,#2b6cb0);text-decoration:none;font-size:12px;overflow-wrap:anywhere}",
-      ".dsh-https-url a:hover{text-decoration:underline}",
-      ".dsh-https-alert{border-radius:8px;padding:8px 10px;font-size:12px;line-height:19px;overflow-wrap:anywhere}",
-      ".dsh-https-alert-bad{background:#fdecec;color:#8f2323;border:1px solid #f3c9c9}",
-      ".dsh-https-alert-warn{background:#fff6df;color:#7a5200;border:1px solid #f2dfb0}",
-      ".dsh-https-alert-ok{background:#e8f7ef;color:#0a5d36;border:1px solid #bfe8d2}",
-      ".dsh-https-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}",
-      ".dsh-https-metric{border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.12));border-radius:8px;padding:8px 10px;min-width:0}",
-      ".dsh-https-metricLabel{font-size:11px;color:var(--dsw-alias-label-secondary,#61666b);line-height:18px}",
-      ".dsh-https-metricValue{font-size:13px;color:var(--dsw-alias-label-primary,#0f1115);line-height:20px;overflow-wrap:anywhere}",
-      ".dsh-https-field{display:flex;flex-direction:column;gap:4px;min-width:0}",
-      ".dsh-https-fieldLabel{font-size:11px;color:var(--dsw-alias-label-secondary,#61666b);line-height:18px}",
-      ".dsh-https-input{height:30px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:12px;padding:0 10px;min-width:0;width:100%;box-sizing:border-box}",
-      ".dsh-https-seg{display:flex;gap:6px;flex-wrap:wrap}",
-      ".dsh-https-check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-primary,#0f1115)}",
-      ".dsh-https-hint{font-size:11px;color:var(--dsw-alias-label-secondary,#61666b);line-height:18px}",
-      ".dsh-https-formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}",
-      "@media (max-width:640px){.dsh-https-page{padding:0 14px 24px}.dsh-https-grid{grid-template-columns:1fr}.dsh-https-formGrid{grid-template-columns:1fr}.dsh-https-key{min-width:64px}}",
-    ].join("");
+    // 与「服务与重启」共用一套暖灰 + 青黛的设计语言：每页一个强调色，
+    // 四级字号，直角平面卡片，浅色与深色各自成对。
+    var CSS = `
+      .dsh-https-page {
+        --dh-card: #fbf9f4;
+        --dh-soft: #f3efe6;
+        --dh-sunk: #ebe5d9;
+        --dh-line: #e3dbcc;
+        --dh-line-strong: #d4c8b4;
+        --dh-text: #2b2620;
+        --dh-sub: #60584b;
+        --dh-mute: #776e60;
+        --dh-accent: #4c4665;
+        --dh-accent-hover: #3e3955;
+        --dh-on-accent: #fbf9f4;
+        --dh-ok: #2c7349;
+        --dh-err: #9c3b45;
+        --dh-warn: #7d5b1f;
+        --dh-radius: 12px;
+        --dh-radius-sm: 8px;
+        --dh-title: 20px;
+        --dh-body: 14px;
+        --dh-small: 13px;
+        --dh-meta: 12px;
+        --dh-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 100%;
+        max-width: 920px;
+        min-width: 0;
+        padding: 4px 0 48px;
+        color: var(--dh-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: var(--dh-body);
+        line-height: 1.6;
+      }
+      body[data-ds-dark-theme] .dsh-https-page,
+      :root[data-ds-theme-source="dark"] .dsh-https-page {
+        --dh-card: #211f1c;
+        --dh-soft: #2b2823;
+        --dh-sunk: #181613;
+        --dh-line: #3b362d;
+        --dh-line-strong: #4d463a;
+        --dh-text: #f1ece3;
+        --dh-sub: #c3baab;
+        --dh-mute: #9c9384;
+        --dh-accent: #cfc6e6;
+        --dh-accent-hover: #ddd6ef;
+        --dh-on-accent: #241f2b;
+        --dh-ok: #82c99f;
+        --dh-err: #e4949b;
+        --dh-warn: #d8b673;
+      }
+      .dsh-https-page *,
+      .dsh-https-page *::before,
+      .dsh-https-page *::after { box-sizing: border-box; }
+
+      .dsh-https-head h1 {
+        margin: 0;
+        font-size: var(--dh-title);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .dsh-https-head p {
+        margin: 6px 0 0;
+        color: var(--dh-sub);
+        font-size: var(--dh-small);
+      }
+
+      .dsh-https-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px 18px;
+        border: 1px solid var(--dh-line);
+        border-radius: var(--dh-radius);
+        background: var(--dh-card);
+        min-width: 0;
+      }
+      .dsh-https-cardHead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .dsh-https-cardHead h2 {
+        margin: 0;
+        font-size: var(--dh-body);
+        font-weight: 600;
+        line-height: 1.5;
+      }
+      .dsh-https-cardBody {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      /* 顶部一句话状态 */
+      .dsh-https-hero {
+        gap: 14px;
+        padding: 18px;
+      }
+      .dsh-https-heroMain {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        min-width: 0;
+      }
+      .dsh-https-beacon {
+        width: 8px;
+        height: 8px;
+        margin-top: 10px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: var(--dh-mute);
+      }
+      .dsh-https-beacon[data-tone="ok"] { background: var(--dh-ok); }
+      .dsh-https-beacon[data-tone="warn"] { background: var(--dh-warn); }
+      .dsh-https-beacon[data-tone="err"] { background: var(--dh-err); }
+      .dsh-https-heroText { min-width: 0; }
+      .dsh-https-heroTitle {
+        margin: 0;
+        font-size: var(--dh-title);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .dsh-https-heroMeta {
+        margin: 4px 0 0;
+        color: var(--dh-sub);
+        font-size: var(--dh-small);
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .dsh-https-heroMeta[data-tone="warn"] { color: var(--dh-warn); }
+      .dsh-https-heroMeta[data-tone="err"] { color: var(--dh-err); }
+
+      .dsh-https-address {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .dsh-https-address a {
+        color: var(--dh-accent);
+        font-size: var(--dh-body);
+        font-weight: 600;
+        line-height: 1.5;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+      }
+      .dsh-https-address a:hover { text-decoration: underline; }
+      .dsh-https-address a:focus-visible {
+        outline: 2px solid var(--dh-accent);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      .dsh-https-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--dh-sub);
+        font-size: var(--dh-meta);
+        line-height: 1.5;
+        white-space: nowrap;
+      }
+      .dsh-https-status .dsh-https-beacon { margin-top: 0; }
+      .dsh-https-status[data-tone="ok"] { color: var(--dh-ok); }
+      .dsh-https-status[data-tone="warn"] { color: var(--dh-warn); }
+      .dsh-https-status[data-tone="err"] { color: var(--dh-err); }
+      .dsh-https-status[data-tone="accent"] { color: var(--dh-accent); }
+
+      .dsh-https-note {
+        margin: 0;
+        color: var(--dh-sub);
+        font-size: var(--dh-small);
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .dsh-https-note[data-tone="warn"] { color: var(--dh-warn); }
+      .dsh-https-note[data-tone="err"] { color: var(--dh-err); }
+      .dsh-https-hint {
+        margin: 0;
+        color: var(--dh-mute);
+        font-size: var(--dh-meta);
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+
+      /* 按钮：全页只用 --dh-accent 一个强调色 */
+      .dsh-https-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 14px;
+        border: 1px solid var(--dh-line-strong);
+        border-radius: var(--dh-radius-sm);
+        background: var(--dh-card);
+        color: var(--dh-text);
+        font: inherit;
+        font-size: var(--dh-small);
+        font-weight: 500;
+        line-height: 1;
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color .15s ease, border-color .15s ease;
+      }
+      .dsh-https-btn:hover { background: var(--dh-soft); }
+      .dsh-https-btn:active { background: var(--dh-sunk); }
+      .dsh-https-btn:focus-visible {
+        outline: 2px solid var(--dh-accent);
+        outline-offset: 2px;
+      }
+      .dsh-https-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .dsh-https-btn:disabled:hover { background: var(--dh-card); }
+      .dsh-https-btnPrimary {
+        border-color: transparent;
+        background: var(--dh-accent);
+        color: var(--dh-on-accent);
+      }
+      .dsh-https-btnPrimary:hover { background: var(--dh-accent-hover); }
+      .dsh-https-btnPrimary:active { background: var(--dh-accent-hover); }
+      .dsh-https-btnPrimary:disabled,
+      .dsh-https-btnPrimary:disabled:hover {
+        opacity: 1;
+        border-color: var(--dh-line);
+        background: var(--dh-sunk);
+        color: var(--dh-mute);
+      }
+      .dsh-https-btnGhost {
+        border-color: transparent;
+        background: transparent;
+        color: var(--dh-sub);
+      }
+      .dsh-https-btnGhost:hover { background: var(--dh-soft); color: var(--dh-text); }
+      .dsh-https-btnSm {
+        height: 28px;
+        padding: 0 10px;
+        font-size: var(--dh-meta);
+      }
+      .dsh-https-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* 提示条：中性底 + 细边，只让左侧细线表达语气 */
+      .dsh-https-callout {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--dh-line);
+        border-left: 3px solid var(--dh-line-strong);
+        border-radius: var(--dh-radius-sm);
+        background: var(--dh-soft);
+        color: var(--dh-sub);
+        font-size: var(--dh-small);
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+      .dsh-https-callout[data-tone="err"] { border-left-color: var(--dh-err); }
+      .dsh-https-callout[data-tone="warn"] { border-left-color: var(--dh-warn); }
+      .dsh-https-callout[data-tone="ok"] { border-left-color: var(--dh-ok); }
+      .dsh-https-callout:has(.dsh-https-btn) { align-items: center; }
+      .dsh-https-calloutBody { flex: 1; min-width: 0; }
+      .dsh-https-calloutTitle {
+        color: var(--dh-text);
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+
+      /* 键值行：标签在上、值在下，长路径不截断 */
+      .dsh-https-rows {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+      }
+      .dsh-https-row {
+        display: grid;
+        grid-template-columns: 84px minmax(0, 1fr);
+        gap: 12px;
+        padding: 8px 0;
+        border-top: 1px solid var(--dh-line);
+      }
+      .dsh-https-row:first-child { border-top: 0; padding-top: 0; }
+      .dsh-https-row:last-child { padding-bottom: 0; }
+      .dsh-https-row dt {
+        color: var(--dh-sub);
+        font-size: var(--dh-meta);
+        line-height: 20px;
+      }
+      .dsh-https-row dd {
+        margin: 0;
+        color: var(--dh-text);
+        font-size: var(--dh-small);
+        line-height: 20px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .dsh-https-row dd.dsh-https-mono {
+        font-family: var(--dh-mono);
+        font-size: var(--dh-meta);
+        line-height: 1.6;
+      }
+
+      .dsh-https-details {
+        border-top: 1px solid var(--dh-line);
+        padding-top: 10px;
+      }
+      .dsh-https-details > summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--dh-sub);
+        font-size: var(--dh-meta);
+        line-height: 1.6;
+        list-style: none;
+        cursor: pointer;
+      }
+      .dsh-https-details > summary::-webkit-details-marker { display: none; }
+      .dsh-https-details > summary::before {
+        content: "+";
+        display: inline-block;
+        width: 10px;
+        color: var(--dh-mute);
+        text-align: center;
+      }
+      .dsh-https-details[open] > summary::before { content: "−"; }
+      .dsh-https-details[open] > summary { margin-bottom: 8px; }
+      .dsh-https-detailsBody { min-width: 0; }
+
+      /* 证书来源切换：外 10px、内 8px 同心圆角，不做嵌套卡片 */
+      .dsh-https-seg {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--dh-line);
+        border-radius: 10px;
+        background: var(--dh-sunk);
+        align-self: flex-start;
+      }
+      .dsh-https-seg button {
+        height: 28px;
+        padding: 0 12px;
+        border: 1px solid transparent;
+        border-radius: var(--dh-radius-sm);
+        background: transparent;
+        color: var(--dh-sub);
+        font: inherit;
+        font-size: var(--dh-meta);
+        line-height: 1;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .dsh-https-seg button:hover { color: var(--dh-text); }
+      .dsh-https-seg button[aria-pressed="true"] {
+        border-color: var(--dh-line-strong);
+        background: var(--dh-card);
+        color: var(--dh-text);
+      }
+      .dsh-https-seg button:focus-visible {
+        outline: 2px solid var(--dh-accent);
+        outline-offset: 1px;
+      }
+      .dsh-https-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--dh-line);
+      }
+
+      .dsh-https-fields {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .dsh-https-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+      }
+      .dsh-https-label {
+        color: var(--dh-sub);
+        font-size: var(--dh-meta);
+        line-height: 1.5;
+      }
+      .dsh-https-input {
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--dh-line-strong);
+        border-radius: var(--dh-radius-sm);
+        background: var(--dh-card);
+        color: var(--dh-text);
+        font: inherit;
+        font-size: var(--dh-small);
+        line-height: 1.5;
+        min-width: 0;
+      }
+      .dsh-https-input::placeholder { color: var(--dh-mute); opacity: 1; }
+      .dsh-https-input:focus {
+        outline: 2px solid var(--dh-accent);
+        outline-offset: 1px;
+        border-color: var(--dh-accent);
+      }
+      .dsh-https-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        color: var(--dh-text);
+        font-size: var(--dh-small);
+        line-height: 1.5;
+        cursor: pointer;
+      }
+      .dsh-https-check input {
+        width: 15px;
+        height: 15px;
+        margin: 2px 0 0;
+        accent-color: var(--dh-accent);
+        flex: 0 0 auto;
+      }
+      .dsh-https-subhead {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        color: var(--dh-text);
+        font-size: var(--dh-small);
+        font-weight: 600;
+      }
+      .dsh-https-tag {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        border: 1px solid var(--dh-line-strong);
+        border-radius: 6px;
+        color: var(--dh-mute);
+        font-size: var(--dh-meta);
+        font-weight: 400;
+        white-space: nowrap;
+      }
+      .dsh-https-warnList {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--dh-sub);
+        font-size: var(--dh-meta);
+        line-height: 1.7;
+      }
+      .dsh-https-spacer { flex: 1 1 auto; }
+      .dsh-https-empty {
+        margin: 0;
+        color: var(--dh-mute);
+        font-size: var(--dh-small);
+      }
+
+      @media (max-width: 560px) {
+        .dsh-https-page { gap: 16px; padding-bottom: 32px; }
+        .dsh-https-card { padding: 14px; }
+        .dsh-https-hero { padding: 16px 14px; }
+        .dsh-https-fields { grid-template-columns: 1fr; }
+        .dsh-https-row { grid-template-columns: 1fr; gap: 1px; }
+        .dsh-https-row dt { line-height: 1.5; }
+      }
+    `;
 
     function ensureCss() {
       if (typeof document === "undefined") return;
@@ -68,11 +505,25 @@ window.__ModuleLoader__.load({
       document.head.appendChild(style);
     }
 
-    function fmtTime(value) {
+    function fmtDate(value) {
       if (!value) return "—";
       var date = new Date(value);
       if (Number.isNaN(date.getTime())) return String(value);
-      return date.toLocaleString("zh-CN", { hour12: false });
+      return date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+    }
+
+    function fmtDateTime(value) {
+      if (!value) return "—";
+      var date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
     }
 
     function fmtFingerprint(value) {
@@ -81,53 +532,136 @@ window.__ModuleLoader__.load({
       return (hex.match(/.{2}/g) || []).join(":");
     }
 
-    function badge(text, tone) {
-      return React.createElement("span", { className: "dsh-https-badge dsh-https-badge-" + (tone || "info") }, text);
+    function listText(items) {
+      var list = (items || []).map(function (item) {
+        return item && item.value ? String(item.value) : String(item || "");
+      }).filter(Boolean);
+      return list.length ? list.join("、") : "—";
     }
 
-    // The host only ever reports disabled / misconfigured / idle / issuing /
-    // valid / error; map them to human labels instead of leaking raw phases.
-    var ACME_PHASES = {
-      disabled: ["未启用", "warn"],
-      misconfigured: ["配置不完整", "bad"],
-      idle: ["待机", "info"],
-      issuing: ["签发中", "info"],
-      valid: ["证书有效", "ok"],
-      ready: ["已就绪", "ok"],
-      error: ["错误", "bad"],
-      starting: ["启动中", "info"]
-    };
-
-    function acmeBadge(acme) {
-      if (!acme || !acme.enabled) return badge("未启用", "warn");
-      var entry = ACME_PHASES[acme.phase] || ["待机", "info"];
-      return badge(entry[0], entry[1]);
+    function expiryText(notAfter, daysLeft) {
+      var date = fmtDate(notAfter);
+      if (typeof daysLeft !== "number") return date;
+      if (daysLeft < 0) return date + "（已过期 " + Math.abs(daysLeft) + " 天）";
+      if (daysLeft === 0) return date + "（今天到期）";
+      if (daysLeft === 1) return date + "（明天到期）";
+      return date + "（还有 " + daysLeft + " 天）";
     }
 
-    function row(label, value, mono) {
-      return React.createElement(
-        "div",
-        { className: "dsh-https-row" },
-        React.createElement("span", { className: "dsh-https-key" }, label),
-        React.createElement("span", { className: "dsh-https-val" + (mono ? " dsh-https-mono" : "") }, value)
+    function expiryLine(notAfter, daysLeft) {
+      var date = fmtDate(notAfter);
+      if (typeof daysLeft !== "number") return date;
+      if (daysLeft < 0) return date + "（已过期 " + Math.abs(daysLeft) + " 天）";
+      if (daysLeft === 0) return date + "（今天到期）";
+      if (daysLeft === 1) return date + "（明天到期）";
+      return date + "到期（还有 " + daysLeft + " 天）";
+    }
+
+    function modeName(mode) {
+      if (mode === "acme") return "自动证书";
+      if (mode === "local") return "本地 CA";
+      if (mode === "files") return "证书文件";
+      return "未设置";
+    }
+
+    function certState(cert) {
+      if (!cert || !cert.available) {
+        return { tone: cert && cert.error ? "err" : "warn", label: cert && cert.error ? "证书错误" : "证书未就绪" };
+      }
+      if (typeof cert.daysLeft === "number" && cert.daysLeft < 0) return { tone: "err", label: "证书已过期" };
+      if (typeof cert.daysLeft === "number" && cert.daysLeft <= 0) return { tone: "err", label: "证书今天到期" };
+      if (typeof cert.daysLeft === "number" && cert.daysLeft <= 14) return { tone: "warn", label: "证书即将到期" };
+      return { tone: "ok", label: "证书有效" };
+    }
+
+    function acmeState(acme) {
+      if (!acme || !acme.enabled) return "未启用";
+      if (!acme.usable) return "待配置";
+      if (acme.phase === "issuing") return "正在申请";
+      if (acme.phase === "error") return "申请失败";
+      if (acme.phase === "valid" || acme.phase === "ready") return "已生效";
+      return "已启用";
+    }
+
+    function statusNode(text, tone) {
+      return h(
+        "span",
+        { className: "dsh-https-status", "data-tone": tone || "mute" },
+        h("span", { className: "dsh-https-beacon", "aria-hidden": "true" }),
+        text
       );
     }
 
-    function field(label, control) {
-      return React.createElement(
+    function card(title, status, body) {
+      return h(
+        "section",
+        { className: "dsh-https-card" },
+        h("div", { className: "dsh-https-cardHead" }, h("h2", null, title), status || null),
+        h("div", { className: "dsh-https-cardBody" }, body)
+      );
+    }
+
+    function rows(items) {
+      var list = (items || []).filter(Boolean);
+      return h(
+        "dl",
+        { className: "dsh-https-rows" },
+        list.map(function (item, index) {
+          return h(
+            "div",
+            { className: "dsh-https-row", key: item.key || index },
+            h("dt", null, item.label),
+            h("dd", { className: item.mono ? "dsh-https-mono" : undefined }, item.value)
+          );
+        })
+      );
+    }
+
+    function details(summaryText, body) {
+      return h(
+        "details",
+        { className: "dsh-https-details" },
+        h("summary", null, summaryText),
+        h("div", { className: "dsh-https-detailsBody" }, body)
+      );
+    }
+
+    function callout(tone, title, body, action) {
+      return h(
+        "div",
+        { className: "dsh-https-callout", "data-tone": tone || "info" },
+        h(
+          "div",
+          { className: "dsh-https-calloutBody" },
+          title ? h("div", { className: "dsh-https-calloutTitle" }, title) : null,
+          h("div", null, body)
+        ),
+        action || null
+      );
+    }
+
+    function field(label, control, hint) {
+      return h(
         "label",
         { className: "dsh-https-field" },
-        React.createElement("span", { className: "dsh-https-fieldLabel" }, label),
-        control
+        h("span", { className: "dsh-https-label" }, label),
+        control,
+        hint ? h("span", { className: "dsh-https-hint" }, hint) : null
       );
     }
 
     function copyText(text) {
-      if (!text) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).catch(function () {});
-        return;
+        return navigator.clipboard.writeText(text).then(function () {
+          return true;
+        }).catch(function () {
+          return fallbackCopy(text);
+        });
       }
+      return Promise.resolve(fallbackCopy(text));
+    }
+
+    function fallbackCopy(text) {
       try {
         var area = document.createElement("textarea");
         area.value = text;
@@ -135,52 +669,12 @@ window.__ModuleLoader__.load({
         area.style.opacity = "0";
         document.body.appendChild(area);
         area.select();
-        document.execCommand("copy");
+        var copied = document.execCommand("copy");
         document.body.removeChild(area);
+        return copied;
       } catch (error) {
-        // Clipboard is best-effort.
+        return false;
       }
-    }
-
-    function certificateCard(title, data, isPublic) {
-      if (!data) return null;
-      var available = data.available;
-      var tone = available ? "ok" : data.error ? "bad" : "warn";
-      var label = available ? "可用" : data.error ? "错误" : "未配置";
-      var body = [];
-      if (isPublic) {
-        body.push(row("来源", data.source === "acme" ? "ACME 自动签发" : data.source === "files" ? "证书文件" : "—"));
-        if (data.source === "files" && data.certFile) body.push(row("证书文件", data.certFile, true));
-        if (data.staging !== null && data.staging !== undefined) {
-          body.push(row("环境", data.staging ? "Let's Encrypt Staging" : "Let's Encrypt Production"));
-        }
-        body.push(row("域名", (data.san || []).map(function (item) { return (item.type === "ip" ? "IP " : "") + item.value; }).join("，") || "—"));
-        body.push(row("到期", fmtTime(data.notAfter) + (typeof data.daysLeft === "number" ? "（剩 " + data.daysLeft + " 天）" : "")));
-        body.push(row("签发者", data.issuer || "—", true));
-        body.push(row("指纹", fmtFingerprint(data.fingerprintSha256), true));
-        if (data.chainLength) body.push(row("链长度", data.chainLength + " 张证书"));
-      } else {
-        body.push(row("根证书", data.caFile || "—", true));
-        body.push(row("根指纹", fmtFingerprint(data.caFingerprintSha256), true));
-        body.push(row("根到期", fmtTime(data.caNotAfter)));
-        body.push(row("叶证书到期", fmtTime(data.leafNotAfter) + (typeof data.leafDaysLeft === "number" ? "（剩 " + data.leafDaysLeft + " 天）" : "")));
-        body.push(row("覆盖名称", (data.sans || []).map(function (item) { return (item.type === "ip" ? "IP " : "") + item.value; }).join("，") || "—"));
-        if (data.caKeyMode) body.push(row("私钥权限", "0o" + (Number(data.caKeyMode) & 0o777).toString(8).padStart(3, "0")));
-      }
-      if (data.error) {
-        body.push(React.createElement("div", { className: "dsh-https-alert dsh-https-alert-bad" }, data.error));
-      }
-      return React.createElement(
-        "div",
-        { className: "dsh-https-card" },
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardHead" },
-          React.createElement("span", { className: "dsh-https-cardTitle" }, title),
-          badge(label, tone)
-        ),
-        React.createElement("div", { className: "dsh-https-cardBody" }, body)
-      );
     }
 
     function HttpsPage() {
@@ -188,15 +682,28 @@ window.__ModuleLoader__.load({
       var stateHook = React.useState({ loading: true, error: null, data: null });
       var state = stateHook[0];
       var setState = stateHook[1];
-      var busyHook = React.useState(false);
+      var busyHook = React.useState(null);
       var busy = busyHook[0];
       var setBusy = busyHook[1];
       var noticeHook = React.useState(null);
       var notice = noticeHook[0];
       var setNotice = noticeHook[1];
+      var copiedHook = React.useState("");
+      var copied = copiedHook[0];
+      var setCopied = copiedHook[1];
+      var certOpenHook = React.useState(null);
+      var certOpenState = certOpenHook[0];
+      var setCertOpen = certOpenHook[1];
+      var passwordOpenHook = React.useState(false);
+      var passwordOpen = passwordOpenHook[0];
+      var setPasswordOpen = passwordOpenHook[1];
 
-      function load(showBusy) {
-        if (showBusy) setBusy(true);
+      function load(silent) {
+        if (!silent) {
+          setState(function (prev) {
+            return { loading: true, error: null, data: prev.data };
+          });
+        }
         return fetch(API + "/status", { credentials: "same-origin", cache: "no-store" })
           .then(function (response) {
             return response.json().then(function (body) {
@@ -211,84 +718,63 @@ window.__ModuleLoader__.load({
             setState(function (prev) {
               return { loading: false, error: String(error && error.message ? error.message : error), data: prev.data };
             });
-          })
-          .then(function () {
-            if (showBusy) setBusy(false);
           });
       }
 
       React.useEffect(function () {
-        load(false);
-        var timer = setInterval(function () { load(false); }, 15000);
+        load(true);
+        var timer = setInterval(function () { load(true); }, 15000);
         return function () { clearInterval(timer); };
       }, []);
 
-      function renew() {
-        if (busy) return;
-        if (typeof window !== "undefined" && typeof window.confirm === "function") {
-          if (!window.confirm("现在向 Let's Encrypt 申请/续期证书？Staging 环境签发的证书浏览器不会信任。")) return;
-        }
-        setBusy(true);
-        setNotice(null);
-        fetch(API + "/renew", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ force: true }),
-        })
-          .then(function (response) {
-            return response.json().then(function (body) {
-              if (!response.ok) throw new Error(body && body.error ? body.error : "HTTP " + response.status);
-              return body;
-            });
-          })
-          .then(function (body) {
-            setNotice({ tone: "ok", text: "已开始签发任务（" + (body.status || "started") + "），完成后状态会自动刷新。" });
-            setTimeout(function () { load(false); }, 2500);
-            setTimeout(function () { load(false); }, 8000);
-          })
-          .catch(function (error) {
-            setNotice({ tone: "bad", text: String(error && error.message ? error.message : error) });
-          })
-          .then(function () {
-            setBusy(false);
-          });
-      }
+      React.useEffect(function () {
+        if (!notice || notice.tone !== "ok") return undefined;
+        var timer = setTimeout(function () { setNotice(null); }, 6000);
+        return function () { clearTimeout(timer); };
+      }, [notice]);
 
       var data = state.data;
-      var listener = data && data.listener ? data.listener : {};
-      var certs = data && data.certs ? data.certs : {};
-      var acme = data && data.acme ? data.acme : {};
+      var listener = (data && data.listener) || {};
+      var certs = (data && data.certs) || {};
+      var acme = (data && data.acme) || {};
       var settings = (data && data.settings) || {};
       var settingsAcme = settings.acme || {};
       var credentials = settings.credentials || {};
       var auth = (data && data.auth) || settings.auth || {};
       var urls = data && data.publicUrls && Array.isArray(data.publicUrls.https) ? data.publicUrls.https : [];
       var running = Boolean(data && data.started && listener.running);
-      var errors = (data && data.errors) || [];
       var warnings = (data && data.warnings) || [];
+      var errors = (data && data.errors) || [];
+      var publicCert = certs.public || null;
+      var localCert = certs.local || null;
+      var localActive = Boolean(certs.defaultSource === "local" && localCert && localCert.available);
+      var mainCert = localActive ? localCert : publicCert;
+      var mainState = certState(mainCert);
+      var certFile = settings.files && settings.files.certFile ? settings.files.certFile : "";
 
       var draftHook = React.useState({ mode: "files", email: "", domains: "", zone: "", staging: true, secretId: "" });
       var draft = draftHook[0];
       var setDraft = draftHook[1];
-      var secretHook = React.useState("");
-      var secretKey = secretHook[0];
-      var setSecretKey = secretHook[1];
-      var savingHook = React.useState(null);
-      var saving = savingHook[0];
-      var setSaving = savingHook[1];
-      var sigHook = React.useState("");
-      var formSig = [
+      var secretKeyHook = React.useState("");
+      var secretKey = secretKeyHook[0];
+      var setSecretKey = secretKeyHook[1];
+      var authDraftHook = React.useState({ current: "", next: "", confirm: "" });
+      var authDraft = authDraftHook[0];
+      var setAuthDraft = authDraftHook[1];
+
+      var serverSig = [
         settings.mode || "",
         settingsAcme.email || "",
         (settingsAcme.domains || []).join(","),
         settingsAcme.zone || "",
         String(settingsAcme.staging),
       ].join("|");
-      // Keep the form in sync with the server after every reload, without
-      // overwriting what the user is typing in between reloads.
-      if (data && sigHook[0] !== formSig) {
-        sigHook[1](formSig);
+      var sigHook = React.useState("");
+
+      React.useEffect(function () {
+        if (!data) return;
+        if (sigHook[0] === serverSig) return;
+        sigHook[1](serverSig);
         setDraft({
           mode: settings.mode || "files",
           email: settingsAcme.email || "",
@@ -297,45 +783,13 @@ window.__ModuleLoader__.load({
           staging: settingsAcme.staging !== false,
           secretId: "",
         });
-      }
+        setSecretKey("");
+      }, [serverSig, data]);
 
-      var authDraftHook = React.useState({ current: "", next: "", confirm: "" });
-      var authDraft = authDraftHook[0];
-      var setAuthDraft = authDraftHook[1];
-      var authBusyHook = React.useState(false);
-      var authBusy = authBusyHook[0];
-      var setAuthBusy = authBusyHook[1];
+      var certOpen = certOpenState === null ? settings.mode === "acme" : certOpenState;
 
-      function saveAuthPassword() {
-        if (authBusy) return;
-        if (!authDraft.next || authDraft.next.length < 8) {
-          setNotice({ tone: "bad", text: "新密码至少 8 位。" });
-          return;
-        }
-        if (authDraft.next !== authDraft.confirm) {
-          setNotice({ tone: "bad", text: "两次输入的新密码不一致。" });
-          return;
-        }
-        setAuthBusy(true);
-        setNotice(null);
-        postJson("/auth/password", {
-          currentPassword: authDraft.current,
-          newPassword: authDraft.next,
-          confirmPassword: authDraft.confirm,
-        })
-          .then(function () {
-            setAuthDraft({ current: "", next: "", confirm: "" });
-            setNotice({ tone: "ok", text: "密码已更新，所有会话已下线，即将回到登录页…" });
-            setTimeout(function () {
-              if (typeof window !== "undefined") window.location.assign("/dsh-https/auth/login?changed=1");
-            }, 1500);
-          })
-          .catch(function (error) {
-            setNotice({ tone: "bad", text: String(error && error.message ? error.message : error) });
-          })
-          .then(function () {
-            setAuthBusy(false);
-          });
+      function messageOf(error) {
+        return String(error && error.message ? error.message : error);
       }
 
       function postJson(path, body) {
@@ -354,390 +808,677 @@ window.__ModuleLoader__.load({
         });
       }
 
-      function saveMode(nextMode) {
-        if (saving) return;
-        var payload = {
-          mode: nextMode,
-          acme: {
-            email: draft.email,
-            domains: draft.domains,
-            zone: draft.zone,
-            staging: Boolean(draft.staging),
-          },
-        };
-        if (nextMode === "acme" && typeof window !== "undefined" && typeof window.confirm === "function") {
-          if (!window.confirm("切换到自动证书？会用下面填写的邮箱和域名为 Let's Encrypt 申请证书，签发成功前继续使用当前证书。")) return;
-        }
-        setSaving("settings");
-        setNotice(null);
-        postJson("/settings", payload)
-          .then(function (body) {
-            if (body.status) setState({ loading: false, error: null, data: body.status });
-            setNotice({ tone: "ok", text: nextMode === "acme" ? "已切换到自动证书，正在申请，状态会自动刷新。" : "已切换到证书文件模式。" });
-            setTimeout(function () { load(false); }, 2500);
-          })
-          .catch(function (error) {
-            setNotice({ tone: "bad", text: String(error && error.message ? error.message : error) });
-          })
-          .then(function () { setSaving(null); });
+      function copyAddress(url) {
+        copyText(url).then(function (ok) {
+          if (!ok) {
+            setNotice({ tone: "warn", text: "复制失败，请手动选中地址复制。" });
+            return;
+          }
+          setCopied(url);
+          setTimeout(function () { setCopied(""); }, 1800);
+        });
       }
 
-      function saveCredential() {
-        if (saving) return;
-        if (!draft.secretId && !secretKey) {
-          setNotice({ tone: "warn", text: "请先填写 SecretId 和 SecretKey。" });
+      function renew() {
+        if (busy) return;
+        setBusy("renew");
+        setNotice(null);
+        postJson("/renew", { force: true })
+          .then(function () {
+            setNotice({ tone: "ok", text: "已开始续期，证书就绪后会自动切换。" });
+            setTimeout(function () { load(true); }, 3000);
+            setTimeout(function () { load(true); }, 10000);
+          })
+          .catch(function (error) {
+            setNotice({ tone: "bad", text: messageOf(error) });
+          })
+          .then(function () { setBusy(null); });
+      }
+
+      function saveCert(event) {
+        if (event) event.preventDefault();
+        if (busy) return;
+        var nextMode = draft.mode;
+        if (nextMode !== "files" && nextMode !== "acme") {
+          setNotice({ tone: "warn", text: "先选择一种证书方式。" });
           return;
         }
-        setSaving("credentials");
+        var email = String(draft.email || "").trim();
+        var domains = String(draft.domains || "").trim();
+        var zone = String(draft.zone || "").trim();
+        var secretId = String(draft.secretId || "").trim();
+        var secretKeyValue = String(secretKey || "").trim();
+        if (nextMode === "acme") {
+          if (!email || email.indexOf("@") <= 0 || email.indexOf(".", email.indexOf("@")) < 0) {
+            setNotice({ tone: "bad", text: "请填写有效的邮箱地址。" });
+            return;
+          }
+          if (!domains) {
+            setNotice({ tone: "bad", text: "请填写要申请证书的域名。" });
+            return;
+          }
+          if ((secretId && !secretKeyValue) || (!secretId && secretKeyValue)) {
+            setNotice({ tone: "bad", text: "SecretId 和 SecretKey 要一起填写。" });
+            return;
+          }
+          if (!credentials.configured && (!secretId || !secretKeyValue)) {
+            setNotice({ tone: "bad", text: "请填写腾讯云的 SecretId 和 SecretKey。" });
+            return;
+          }
+        }
+        setBusy("cert");
         setNotice(null);
-        postJson("/credentials", { secretId: draft.secretId, secretKey: secretKey })
+        var patch = { mode: nextMode };
+        if (nextMode === "acme") {
+          patch.acme = {
+            email: email,
+            domains: domains,
+            zone: zone,
+            staging: Boolean(draft.staging),
+          };
+        }
+        postJson("/settings", patch)
           .then(function (body) {
-            setSecretKey("");
+            if (nextMode === "acme" && secretId && secretKeyValue) {
+              return postJson("/credentials", { secretId: secretId, secretKey: secretKeyValue }).then(function () {
+                return body;
+              });
+            }
+            return body;
+          })
+          .then(function (body) {
+            if (body && body.status) setState({ loading: false, error: null, data: body.status });
             setDraft(function (prev) {
-              return { mode: prev.mode, email: prev.email, domains: prev.domains, zone: prev.zone, staging: prev.staging, secretId: "" };
+              return {
+                mode: prev.mode,
+                email: prev.email,
+                domains: prev.domains,
+                zone: prev.zone,
+                staging: prev.staging,
+                secretId: "",
+              };
             });
-            if (body.status) setState({ loading: false, error: null, data: body.status });
-            setNotice({ tone: "ok", text: "腾讯云密钥已保存（文件权限 600），下一次签发会使用它。" });
+            setSecretKey("");
+            setNotice({
+              tone: "ok",
+              text: nextMode === "acme" ? "已保存，正在申请证书。签发成功后会显示在这里。" : "已改用证书文件。",
+            });
+            setTimeout(function () { load(true); }, 2500);
+            if (nextMode === "acme") setTimeout(function () { load(true); }, 9000);
           })
           .catch(function (error) {
-            setNotice({ tone: "bad", text: String(error && error.message ? error.message : error) });
+            setNotice({ tone: "bad", text: messageOf(error) });
           })
-          .then(function () { setSaving(null); });
+          .then(function () { setBusy(null); });
       }
 
-      var header = React.createElement(
-        "div",
+      function savePassword(event) {
+        if (event) event.preventDefault();
+        if (busy) return;
+        if (!authDraft.next || authDraft.next.length < 8) {
+          setNotice({ tone: "bad", text: "新密码至少要有 8 位。" });
+          return;
+        }
+        if (authDraft.next !== authDraft.confirm) {
+          setNotice({ tone: "bad", text: "两次输入的新密码不一样。" });
+          return;
+        }
+        setBusy("password");
+        setNotice(null);
+        postJson("/auth/password", {
+          currentPassword: authDraft.current,
+          newPassword: authDraft.next,
+          confirmPassword: authDraft.confirm,
+        })
+          .then(function () {
+            setAuthDraft({ current: "", next: "", confirm: "" });
+            setPasswordOpen(false);
+            setNotice({ tone: "ok", text: "密码已更新，请用新密码登录。" });
+            setTimeout(function () {
+              if (typeof window !== "undefined") {
+                window.location.assign((auth.loginPath || "/dsh-https/auth/login") + "?changed=1");
+              }
+            }, 1200);
+          })
+          .catch(function (error) {
+            setNotice({ tone: "bad", text: messageOf(error) });
+          })
+          .then(function () { setBusy(null); });
+      }
+
+      var header = h(
+        "header",
         { className: "dsh-https-head" },
-        React.createElement("div", { className: "dsh-https-title" }, SECTION.title),
-        React.createElement("div", { className: "dsh-https-desc" }, SECTION.desc)
+        h("h1", null, SECTION.title),
+        h("p", null, SECTION.desc)
       );
 
-      var toolbar = React.createElement(
-        "div",
-        { className: "dsh-https-toolbar" },
-        React.createElement(
-          "span",
-          { className: "dsh-https-muted" },
-          state.loading ? "正在读取状态…" : "监听 " + (listener.host || "—") + ":" + (listener.actualPort || listener.port || "—") + " → 上游 " + (data && data.upstream ? data.upstream.host + ":" + data.upstream.port : "—")
-        ),
-        React.createElement(
+      if (!data && state.loading) {
+        return h("div", { className: "dsh-https-page" }, header, h("div", { className: "dsh-https-card" }, h("p", { className: "dsh-https-empty" }, "正在读取状态…")));
+      }
+
+      var heroTone = "ok";
+      var heroTitle = "网站正常运行";
+      var heroMetaTone = "mute";
+      var heroMeta = mainCert && mainCert.available
+        ? (localActive ? "本地证书有效，" : "证书有效，") + expiryLine(localActive ? localCert.leafNotAfter : publicCert.notAfter, localActive ? localCert.leafDaysLeft : publicCert.daysLeft)
+        : "还没有读到可用的证书。";
+      if (state.error) {
+        heroTone = "err";
+        heroTitle = "读取状态失败";
+        heroMeta = "暂时无法读取 HTTPS 服务状态。";
+        heroMetaTone = "err";
+      } else if (data && !running) {
+        heroTone = "err";
+        heroTitle = "网站打不开";
+        heroMeta = "HTTPS 服务没有在运行。如果刚改过设置，请稍等几秒再刷新。";
+        heroMetaTone = "err";
+      } else if (data && data.error) {
+        heroTone = "err";
+        heroTitle = "配置有问题";
+        heroMeta = "HTTPS 配置没有通过检查，请看下面的说明。";
+        heroMetaTone = "err";
+      } else if (mainState.tone === "err") {
+        heroTone = "err";
+        heroTitle = "证书有问题";
+        heroMeta = mainState.label + "。" + heroMeta;
+        heroMetaTone = "err";
+      } else if (mainState.tone === "warn") {
+        heroTone = "warn";
+        heroTitle = "证书快到期了";
+        heroMetaTone = "warn";
+      }
+
+      var heroAddresses = urls.length
+        ? urls.map(function (url) {
+            return h(
+              "div",
+              { key: url, className: "dsh-https-address" },
+              h("a", { href: url, target: "_blank", rel: "noreferrer" }, url),
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsh-https-btn dsh-https-btnSm",
+                  onClick: function () { copyAddress(url); },
+                  "aria-live": "polite",
+                },
+                copied === url ? "已复制" : "复制"
+              )
+            );
+          })
+        : h("p", { className: "dsh-https-empty" }, "还没有生成可访问的地址。");
+
+      var hero = h(
+        "section",
+        { className: "dsh-https-card dsh-https-hero" },
+        h(
           "div",
-          { className: "dsh-https-btns" },
-          React.createElement("button", { type: "button", className: "dsh-https-btn", onClick: function () { load(true); }, disabled: busy }, busy ? "刷新中…" : "刷新"),
-          React.createElement("button", { type: "button", className: "dsh-https-btn dsh-https-btn-primary", onClick: renew, disabled: busy || !acme.usable }, busy ? "处理中…" : "立即续期")
+          { className: "dsh-https-heroMain" },
+          h("span", { className: "dsh-https-beacon", "data-tone": heroTone, "aria-hidden": "true" }),
+          h(
+            "div",
+            { className: "dsh-https-heroText" },
+            h("h2", { className: "dsh-https-heroTitle" }, heroTitle),
+            h("p", { className: "dsh-https-heroMeta", "data-tone": heroMetaTone }, heroMeta)
+          )
+        ),
+        heroAddresses,
+        details(
+          "技术详情",
+          rows([
+            { label: "监听地址", value: (listener.host || "—") + ":" + (listener.actualPort || listener.port || "—"), mono: true },
+            { label: "转发到", value: data && data.upstream ? data.upstream.protocol + "://" + data.upstream.host + ":" + data.upstream.port : "—", mono: true },
+            { label: "版本", value: data && data.version ? "v" + data.version : "—" },
+          ])
         )
       );
 
       var alerts = [];
-      if (state.error) alerts.push(React.createElement("div", { key: "fetch", className: "dsh-https-alert dsh-https-alert-bad" }, "状态读取失败：" + state.error));
-      if (notice) alerts.push(React.createElement("div", { key: "notice", className: "dsh-https-alert dsh-https-alert-" + notice.tone }, notice.text));
-      if (data && data.error) alerts.push(React.createElement("div", { key: "fatal", className: "dsh-https-alert dsh-https-alert-bad" }, data.error));
-      errors.forEach(function (message, index) {
-        alerts.push(React.createElement("div", { key: "err" + index, className: "dsh-https-alert dsh-https-alert-bad" }, message));
+      if (state.error) {
+        alerts.push(
+          callout(
+            "err",
+            "读取状态失败",
+            state.error,
+            h("button", { type: "button", className: "dsh-https-btn dsh-https-btnSm", onClick: function () { load(false); } }, "重试")
+          )
+        );
+      }
+      if (notice) {
+        alerts.push(callout(notice.tone === "bad" ? "err" : notice.tone === "warn" ? "warn" : "ok", null, notice.text));
+      }
+      errors.forEach(function (message) {
+        alerts.push(callout("err", null, message));
       });
-      warnings.forEach(function (message, index) {
-        alerts.push(React.createElement("div", { key: "warn" + index, className: "dsh-https-alert dsh-https-alert-warn" }, message));
-      });
-      if (!running && !data?.error) {
-        alerts.push(React.createElement("div", { key: "stopped", className: "dsh-https-alert dsh-https-alert-warn" }, "HTTPS 监听未运行；请查看上方错误或 profile 日志。"));
+
+      var certBody = [];
+      if (localActive) {
+        certBody.push(
+          rows([
+            { label: "来源", value: "本地 CA" },
+            { label: "根证书", value: localCert.caFile || "—", mono: true },
+            { label: "根证书到期", value: expiryText(localCert.caNotAfter, null) },
+            { label: "站点证书到期", value: expiryText(localCert.leafNotAfter, localCert.leafDaysLeft) },
+            { label: "覆盖名称", value: listText(localCert.sans) },
+          ])
+        );
+        certBody.push(
+          h(
+            "div",
+            { className: "dsh-https-actions" },
+            h("a", { className: "dsh-https-btn dsh-https-btnSm", href: "/dsh-https/" }, "安装说明"),
+            h("a", { className: "dsh-https-btn dsh-https-btnSm", href: "/dsh-https/ca.crt" }, "下载证书")
+          )
+        );
+      } else {
+        if (publicCert && publicCert.available) {
+          certBody.push(
+            rows([
+              { label: "来源", value: modeName(settings.mode || (publicCert.source === "acme" ? "acme" : "files")) },
+              settings.mode !== "acme" && certFile ? { label: "文件", value: certFile, mono: true } : null,
+              settings.mode === "acme" ? { label: "自动续期", value: acmeState(acme) } : null,
+              { label: "域名", value: listText(publicCert.san) },
+              { label: "有效期至", value: expiryText(publicCert.notAfter, publicCert.daysLeft) },
+            ])
+          );
+          if (settings.mode !== "acme" && certFile) {
+            certBody.push(h("p", { className: "dsh-https-hint" }, "证书文件被替换后，网站会自动读取新文件。"));
+          }
+        } else {
+          certBody.push(
+            callout(
+              publicCert && publicCert.error ? "err" : "warn",
+              publicCert && publicCert.error ? "证书有问题" : "还没有读到证书",
+              publicCert && publicCert.error ? publicCert.error : "请检查服务器上的证书文件，或改用自动证书。"
+            )
+          );
+          certBody.push(rows([{ label: "来源", value: modeName(settings.mode) }, certFile ? { label: "文件", value: certFile, mono: true } : null]));
+        }
+        if (publicCert && publicCert.staging) {
+          certBody.push(callout("warn", "这是测试证书", "它由 Let's Encrypt 测试环境签发，浏览器不会信任。正式使用前请关闭测试环境。"));
+        }
+        if (settings.mode === "acme" && acme.lastError) {
+          certBody.push(callout("err", "最近一次申请失败", acme.lastError));
+        }
+        if (settings.mode === "acme" && acme.phase === "issuing") {
+          certBody.push(h("p", { className: "dsh-https-note" }, "正在申请证书，完成后会自动生效。"));
+        }
+        if (settings.mode === "acme" && acme.usable) {
+          certBody.push(
+            h(
+              "div",
+              { className: "dsh-https-actions" },
+              h(
+                "button",
+                { type: "button", className: "dsh-https-btn dsh-https-btnSm", onClick: renew, disabled: Boolean(busy) },
+                busy === "renew" ? "续期中…" : "立即续期"
+              ),
+              h("span", { className: "dsh-https-hint" }, "到期前会自动续期。")
+            )
+          );
+        }
+        if (publicCert && publicCert.available) {
+          certBody.push(
+            details(
+              "证书详情",
+              rows([
+                { label: "签发者", value: publicCert.issuer || "—", mono: true },
+                { label: "指纹", value: fmtFingerprint(publicCert.fingerprintSha256), mono: true },
+                { label: "证书链", value: publicCert.chainLength ? publicCert.chainLength + " 张证书" : "—" },
+                settings.mode === "acme" ? { label: "上次签发", value: fmtDateTime(acme.lastSuccess) } : null,
+                settings.mode === "acme" ? { label: "下次检查", value: fmtDateTime(acme.nextAttempt) } : null,
+              ])
+            )
+          );
+        }
       }
 
-      var overview = React.createElement(
+      var modeButtons = h(
         "div",
-        { className: "dsh-https-card" },
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardHead" },
-          React.createElement("span", { className: "dsh-https-cardTitle" }, "运行状态"),
-          running ? badge("运行中", "ok") : badge("未运行", "bad")
-        ),
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardBody" },
-          React.createElement(
-            "div",
-            { className: "dsh-https-grid" },
-            React.createElement("div", { className: "dsh-https-metric" }, React.createElement("div", { className: "dsh-https-metricLabel" }, "HTTPS 端口"), React.createElement("div", { className: "dsh-https-metricValue" }, String(listener.actualPort || listener.port || "—"))),
-            React.createElement("div", { className: "dsh-https-metric" }, React.createElement("div", { className: "dsh-https-metricLabel" }, "默认证书"), React.createElement("div", { className: "dsh-https-metricValue" }, certs.defaultSource === "public" ? "公网证书" : certs.defaultSource === "local" ? "本地 CA" : "无")),
-            React.createElement("div", { className: "dsh-https-metric" }, React.createElement("div", { className: "dsh-https-metricLabel" }, "上游"), React.createElement("div", { className: "dsh-https-metricValue" }, data && data.upstream ? data.upstream.protocol + "://" + data.upstream.host + ":" + data.upstream.port : "—")),
-            React.createElement("div", { className: "dsh-https-metric" }, React.createElement("div", { className: "dsh-https-metricLabel" }, "版本"), React.createElement("div", { className: "dsh-https-metricValue" }, data && data.version ? "v" + data.version : "—"))
-          ),
-          urls.length > 0
-            ? React.createElement(
-                "div",
-                null,
-                React.createElement("div", { className: "dsh-https-muted", style: { paddingTop: "4px" } }, "可用地址"),
-                React.createElement(
-                  "ul",
-                  { className: "dsh-https-list" },
-                  urls.map(function (url) {
-                    return React.createElement(
-                      "li",
-                      { key: url, className: "dsh-https-url" },
-                      React.createElement("a", { href: url, target: "_blank", rel: "noreferrer" }, url),
-                      React.createElement("button", { type: "button", className: "dsh-https-btn", onClick: function () { copyText(url); } }, "复制")
-                    );
-                  })
-                )
-              )
-            : null,
-          React.createElement(
-            "div",
-            { className: "dsh-https-row" },
-            React.createElement("span", { className: "dsh-https-key" }, "CA 引导页"),
-            React.createElement("span", { className: "dsh-https-val" }, React.createElement("a", { href: "/dsh-https/", target: "_blank", rel: "noreferrer" }, "/dsh-https/"), "（下载本地根证书）")
-          )
-        )
+        { className: "dsh-https-seg", role: "group", "aria-label": "证书来源" },
+        ["files", "acme"].map(function (mode) {
+          return h(
+            "button",
+            {
+              key: mode,
+              type: "button",
+              "aria-pressed": draft.mode === mode ? "true" : "false",
+              onClick: function () { setDraft(Object.assign({}, draft, { mode: mode })); },
+            },
+            mode === "files" ? "证书文件" : "自动证书"
+          );
+        })
       );
 
-      var modeLabel = settings.mode === "acme" ? "自动证书（ACME）" : settings.mode === "files" ? "证书文件" : "本地 CA";
-      var settingsCard = React.createElement(
-        "div",
-        { className: "dsh-https-card" },
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardHead" },
-          React.createElement("span", { className: "dsh-https-cardTitle" }, "证书来源"),
-          badge(modeLabel, settings.mode === "acme" ? "info" : "ok")
-        ),
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardBody" },
-          React.createElement(
+      var certFields = [];
+      if (draft.mode === "acme") {
+        certFields.push(
+          h(
             "div",
-            { className: "dsh-https-seg" },
-            React.createElement(
-              "button",
-              {
-                type: "button",
-                className: "dsh-https-btn" + (draft.mode === "files" ? " dsh-https-btn-primary" : ""),
-                onClick: function () { saveMode("files"); },
-                disabled: Boolean(saving) || draft.mode === "files",
-              },
-              "使用证书文件"
+            { className: "dsh-https-fields" },
+            field(
+              "邮箱",
+              h("input", {
+                className: "dsh-https-input",
+                type: "email",
+                value: draft.email,
+                placeholder: "you@example.com",
+                autoComplete: "email",
+                onChange: function (event) { setDraft(Object.assign({}, draft, { email: event.target.value })); },
+              })
             ),
-            React.createElement(
-              "button",
-              {
-                type: "button",
-                className: "dsh-https-btn" + (draft.mode === "acme" ? " dsh-https-btn-primary" : ""),
-                onClick: function () { saveMode("acme"); },
-                disabled: Boolean(saving) || draft.mode === "acme",
-              },
-              saving === "settings" ? "保存中…" : "使用自动证书"
-            )
-          ),
-          row("当前文件", settings.files && settings.files.certFile ? settings.files.certFile : "—", true),
-          React.createElement(
-            "div",
-            { className: "dsh-https-hint" },
-            "证书文件模式读取 profile 里配置的证书路径，文件更新后会自动热加载；自动证书模式由插件向 Let's Encrypt 申请并自动续期，签发成功前继续使用当前证书。"
-          ),
-          React.createElement("div", { className: "dsh-https-fieldLabel", style: { paddingTop: "4px" } }, "自动证书参数"),
-          React.createElement(
-            "div",
-            { className: "dsh-https-formGrid" },
-            field("邮箱", React.createElement("input", {
-              className: "dsh-https-input",
-              type: "email",
-              value: draft.email,
-              placeholder: "you@example.com",
-              onChange: function (event) { setDraft(Object.assign({}, draft, { email: event.target.value })); },
-            })),
-            field("域名（逗号分隔）", React.createElement("input", {
-              className: "dsh-https-input",
-              type: "text",
-              value: draft.domains,
-              placeholder: "dsh.example.com, *.dsh.example.com",
-              onChange: function (event) { setDraft(Object.assign({}, draft, { domains: event.target.value })); },
-            })),
-            field("DNS 区域（可留空自动识别）", React.createElement("input", {
-              className: "dsh-https-input",
-              type: "text",
-              value: draft.zone,
-              placeholder: "example.com",
-              onChange: function (event) { setDraft(Object.assign({}, draft, { zone: event.target.value })); },
-            })),
-            React.createElement(
-              "label",
-              { className: "dsh-https-check", style: { paddingTop: "18px" } },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: Boolean(draft.staging),
-                onChange: function (event) { setDraft(Object.assign({}, draft, { staging: event.target.checked })); },
+            field(
+              "域名",
+              h("input", {
+                className: "dsh-https-input",
+                type: "text",
+                value: draft.domains,
+                placeholder: "dsh.example.com",
+                onChange: function (event) { setDraft(Object.assign({}, draft, { domains: event.target.value })); },
               }),
-              "使用 Staging（测试环境，浏览器不信任）"
+              "多个域名用逗号隔开。"
             )
-          ),
-          React.createElement(
-            "div",
-            { className: "dsh-https-btns" },
-            React.createElement(
-              "button",
-              { type: "button", className: "dsh-https-btn", onClick: function () { saveMode(draft.mode); }, disabled: Boolean(saving) },
-              "保存自动证书参数"
-            )
-          ),
-          React.createElement("div", { className: "dsh-https-fieldLabel", style: { paddingTop: "6px" } }, "腾讯云 DNSPod 密钥"),
-          row("已保存", credentials.configured ? credentials.secretIdHint || "已配置" : "未配置"),
-          React.createElement(
-            "div",
-            { className: "dsh-https-formGrid" },
-            field("SecretId", React.createElement("input", {
+          )
+        );
+        var keyFields = h(
+          "div",
+          { className: "dsh-https-fields" },
+          field(
+            "SecretId",
+            h("input", {
               className: "dsh-https-input",
               type: "text",
               value: draft.secretId,
-              placeholder: credentials.configured ? "留空表示不修改" : "AKID...",
+              placeholder: credentials.configured ? "已保存，留空不改" : "AKID…",
               autoComplete: "off",
               onChange: function (event) { setDraft(Object.assign({}, draft, { secretId: event.target.value })); },
-            })),
-            field("SecretKey", React.createElement("input", {
+            })
+          ),
+          field(
+            "SecretKey",
+            h("input", {
               className: "dsh-https-input",
               type: "password",
               value: secretKey,
-              placeholder: credentials.configured ? "留空表示不修改" : "请输入 SecretKey",
+              placeholder: credentials.configured ? "已保存，留空不改" : "请输入 SecretKey",
               autoComplete: "new-password",
               onChange: function (event) { setSecretKey(event.target.value); },
-            }))
-          ),
-          React.createElement(
+            })
+          )
+        );
+        var keyHint = h(
+          "p",
+          { className: "dsh-https-hint" },
+          "在腾讯云控制台的「访问管理 → API 密钥」里创建。密钥只保存在这台服务器上。"
+        );
+        if (credentials.configured) {
+          certFields.push(
+            details(
+              "腾讯云密钥（已保存）",
+              h("div", { className: "dsh-https-cardBody" }, keyHint, keyFields)
+            )
+          );
+        } else {
+          certFields.push(
+            h("div", { className: "dsh-https-subhead" }, "腾讯云密钥"),
+            keyHint,
+            keyFields
+          );
+        }
+        certFields.push(
+          details(
+            "高级选项",
+            h(
+              "div",
+              { className: "dsh-https-cardBody" },
+              field(
+                "DNS 区域",
+                h("input", {
+                  className: "dsh-https-input",
+                  type: "text",
+                  value: draft.zone,
+                  placeholder: "example.com",
+                  onChange: function (event) { setDraft(Object.assign({}, draft, { zone: event.target.value })); },
+                }),
+                "通常留空，插件会自动判断。"
+              ),
+              h(
+                "label",
+                { className: "dsh-https-check" },
+                h("input", {
+                  type: "checkbox",
+                  checked: Boolean(draft.staging),
+                  onChange: function (event) { setDraft(Object.assign({}, draft, { staging: event.target.checked })); },
+                }),
+                h("span", null, "先用测试环境申请（浏览器不会信任证书）")
+              ),
+              draft.staging
+                ? h("p", { className: "dsh-https-hint" }, "测试证书只用于排查问题。正式使用前请取消勾选，再保存一次。")
+                : null
+            )
+          )
+        );
+      } else if (draft.mode === "files") {
+        certFields.push(
+          h("p", { className: "dsh-https-hint" }, "使用服务器上的证书文件。换证书时直接替换文件，这里不用改。")
+        );
+      } else {
+        certFields.push(h("p", { className: "dsh-https-hint" }, "选择一种公网证书方式后保存。"));
+      }
+
+      var certEditor = h(
+        "div",
+        { className: "dsh-https-editor" },
+        modeButtons,
+        h(
+          "form",
+          { onSubmit: saveCert },
+          h(
             "div",
-            { className: "dsh-https-hint" },
-            "密钥只保存在本机（06" + "00 权限文件），页面上只显示掩码。需要 DNS 解析权限（DNSPod 的 DNS 记录读写）。"
-          ),
-          React.createElement(
-            "div",
-            { className: "dsh-https-btns" },
-            React.createElement(
-              "button",
-              { type: "button", className: "dsh-https-btn dsh-https-btn-primary", onClick: saveCredential, disabled: Boolean(saving) },
-              saving === "credentials" ? "保存中…" : "保存密钥"
+            { className: "dsh-https-cardBody" },
+            certFields,
+            h(
+              "div",
+              { className: "dsh-https-actions" },
+              h(
+                "button",
+                { type: "submit", className: "dsh-https-btn dsh-https-btnPrimary", disabled: Boolean(busy) || (draft.mode !== "files" && draft.mode !== "acme") },
+                busy === "cert" ? "保存中…" : "保存"
+              )
             )
           )
         )
       );
 
-      var acmeCard = React.createElement(
-        "div",
-        { className: "dsh-https-card" },
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardHead" },
-          React.createElement("span", { className: "dsh-https-cardTitle" }, "ACME 自动证书"),
-          acmeBadge(acme)
-        ),
-        React.createElement(
+      var certCard = card(
+        "证书",
+        statusNode(mainState.label, mainState.tone),
+        h(
           "div",
           { className: "dsh-https-cardBody" },
-          row("目录", acme.directory || "—", true),
-          row("环境", acme.staging ? "Staging（浏览器不信任）" : "Production"),
-          row("域名", (acme.domains || []).join("，") || "—"),
-          row("区域", acme.zone || "—"),
-          row("上次成功", fmtTime(acme.lastSuccess)),
-          row("下次检查", fmtTime(acme.nextAttempt)),
-          acme.challenge ? row("当前挑战", acme.challenge) : null,
-          acme.lastError ? React.createElement("div", { className: "dsh-https-alert dsh-https-alert-bad" }, acme.lastError) : null,
-          React.createElement(
-            "div",
-            { className: "dsh-https-muted" },
-            acme.enabled && acme.usable
-              ? "证书到期前会自动续期；也可点右上角「立即续期」手动触发（10 分钟内只允许一次）。"
-              : acme.enabled
-                ? "ACME 已启用但配置不完整，请在上方填写邮箱、域名，并保存腾讯云密钥。"
-                : "在上方「证书来源」里点「使用自动证书」即可启用，无需重启。"
-          )
-        )
-      );
-
-      var authCard = React.createElement(
-        "div",
-        { className: "dsh-https-card" },
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardHead" },
-          React.createElement("span", { className: "dsh-https-cardTitle" }, "登录鉴权"),
-          badge(auth.enabled ? (auth.configured ? "已启用" : "待设置密码") : "未启用", auth.enabled ? (auth.configured ? "ok" : "warn") : "info")
-        ),
-        React.createElement(
-          "div",
-          { className: "dsh-https-cardBody" },
-          row("入口保护", auth.enabled ? "未登录一律跳转登录页（含插件路由与 /api）" : "关闭"),
-          row("会话有效期", (auth.sessionMaxAgeDays || 30) + " 天"),
-          row("登录限流", (auth.rateLimitPerMinute || 5) + " 次/分钟"),
-          row("核心会话换取", auth.mintAvailable === false ? "不可用（缺少 connection 服务）" : auth.mintDshCookie === false ? "已关闭" : "自动"),
-          auth.enabled
-            ? React.createElement(
-                "div",
-                { className: "dsh-https-formGrid" },
-                field("当前密码", React.createElement("input", {
-                  className: "dsh-https-input",
-                  type: "password",
-                  value: authDraft.current,
-                  autoComplete: "current-password",
-                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { current: event.target.value })); },
-                })),
-                field("新密码（至少 8 位）", React.createElement("input", {
-                  className: "dsh-https-input",
-                  type: "password",
-                  value: authDraft.next,
-                  autoComplete: "new-password",
-                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { next: event.target.value })); },
-                })),
-                field("再输一次", React.createElement("input", {
-                  className: "dsh-https-input",
-                  type: "password",
-                  value: authDraft.confirm,
-                  autoComplete: "new-password",
-                  onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { confirm: event.target.value })); },
-                }))
-              )
-            : null,
-          React.createElement(
-            "div",
-            { className: "dsh-https-hint" },
-            "密码用 scrypt 加盐保存在本机 0600 文件；会话是签名 cookie，改密会让所有浏览器下线。"
-              + (auth.enabled ? "" : "如需开启，请在 profile 配置里设置 auth.enabled=true 后重启 dsh web。")
+          certBody,
+          h(
+            "button",
+            {
+              type: "button",
+              className: "dsh-https-btn dsh-https-btnGhost",
+              onClick: function () { setCertOpen(!certOpen); },
+              "aria-expanded": certOpen ? "true" : "false",
+            },
+            certOpen ? "收起" : "更换证书来源"
           ),
-          React.createElement(
-            "div",
-            { className: "dsh-https-btns" },
-            auth.enabled
-              ? React.createElement(
-                  "button",
-                  { type: "button", className: "dsh-https-btn dsh-https-btn-primary", onClick: saveAuthPassword, disabled: authBusy },
-                  authBusy ? "保存中…" : "修改访问密码"
-                )
-              : null,
-            auth.enabled
-              ? React.createElement(
-                  "a",
-                  { className: "dsh-https-btn", href: "/dsh-https/auth/password", style: { display: "inline-flex", alignItems: "center", textDecoration: "none" } },
-                  "改密页面"
-                )
-              : null,
-            auth.enabled
-              ? React.createElement(
-                  "a",
-                  { className: "dsh-https-btn", href: "/dsh-https/auth/logout", style: { display: "inline-flex", alignItems: "center", textDecoration: "none" } },
-                  "退出登录"
-                )
-              : null
-          )
+          certOpen ? certEditor : null
         )
       );
 
-      return React.createElement(
+      var authOn = Boolean(auth.enabled);
+      var authReady = Boolean(auth.configured);
+      var authStatus = authOn ? (authReady ? statusNode("已开启", "ok") : statusNode("还没有密码", "warn")) : statusNode("未开启", "mute");
+      var authBody = [];
+      if (authOn && authReady) {
+        authBody.push(
+          h(
+            "p",
+            { className: "dsh-https-note" },
+            "打开网站时需要输入密码。登录一次后，这台设备 " + (auth.sessionMaxAgeDays || 30) + " 天内不用再输。"
+          )
+        );
+        authBody.push(
+          h(
+            "div",
+            { className: "dsh-https-actions" },
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dsh-https-btn",
+                onClick: function () { setPasswordOpen(!passwordOpen); },
+                "aria-expanded": passwordOpen ? "true" : "false",
+              },
+              passwordOpen ? "取消" : "修改密码"
+            ),
+            h(
+              "a",
+              { className: "dsh-https-btn dsh-https-btnGhost", href: (auth.loginPath || "/dsh-https/auth/login").replace(/\/login$/, "") + "/logout" },
+              "退出登录"
+            )
+          )
+        );
+        if (passwordOpen) {
+          authBody.push(
+            h(
+              "form",
+              { className: "dsh-https-editor", onSubmit: savePassword },
+              h("p", { className: "dsh-https-hint" }, "保存后所有设备都会退出登录，需要用新密码重新登录。"),
+              h(
+                "div",
+                { className: "dsh-https-fields" },
+                field(
+                  "当前密码",
+                  h("input", {
+                    className: "dsh-https-input",
+                    type: "password",
+                    value: authDraft.current,
+                    autoComplete: "current-password",
+                    autoFocus: true,
+                    onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { current: event.target.value })); },
+                  })
+                ),
+                field(
+                  "新密码（至少 8 位）",
+                  h("input", {
+                    className: "dsh-https-input",
+                    type: "password",
+                    value: authDraft.next,
+                    autoComplete: "new-password",
+                    onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { next: event.target.value })); },
+                  })
+                ),
+                field(
+                  "确认新密码",
+                  h("input", {
+                    className: "dsh-https-input",
+                    type: "password",
+                    value: authDraft.confirm,
+                    autoComplete: "new-password",
+                    onChange: function (event) { setAuthDraft(Object.assign({}, authDraft, { confirm: event.target.value })); },
+                  })
+                )
+              ),
+              h(
+                "div",
+                { className: "dsh-https-actions" },
+                h(
+                  "button",
+                  { type: "submit", className: "dsh-https-btn dsh-https-btnPrimary", disabled: Boolean(busy) },
+                  busy === "password" ? "保存中…" : "保存新密码"
+                )
+              )
+            )
+          );
+        }
+      } else if (authOn && !authReady) {
+        authBody.push(
+          callout("warn", "还没有访问密码", "这个地址现在没有密码。先设置一个，再继续使用。")
+        );
+        authBody.push(
+          h(
+            "div",
+            { className: "dsh-https-actions" },
+            h("a", { className: "dsh-https-btn dsh-https-btnPrimary", href: auth.loginPath || "/dsh-https/auth/login" }, "设置密码")
+          )
+        );
+      } else {
+        authBody.push(
+          h("p", { className: "dsh-https-note" }, "这个地址不需要密码，能访问它的人都可以直接打开 DSH。"),
+          h("p", { className: "dsh-https-hint" }, "要开启登录保护，需要修改插件配置并重启 DSH Web。")
+        );
+      }
+      var authCard = card("访问密码", authStatus, h("div", { className: "dsh-https-cardBody" }, authBody));
+
+      var localCard = null;
+      if (localCert && localCert.enabled && !localActive) {
+        var localState = certState(localCert);
+        var localBody = [];
+        if (localCert.available) {
+          localBody.push(h("p", { className: "dsh-https-note" }, "给局域网设备安装这张证书后，用局域网地址访问就不会再提示不安全。"));
+          localBody.push(
+            rows([
+              { label: "根证书", value: localCert.caFile || "—", mono: true },
+              { label: "根证书到期", value: expiryText(localCert.caNotAfter, null) },
+              { label: "站点证书到期", value: expiryText(localCert.leafNotAfter, localCert.leafDaysLeft) },
+            ])
+          );
+          localBody.push(
+            h(
+              "div",
+              { className: "dsh-https-actions" },
+              h("a", { className: "dsh-https-btn dsh-https-btnSm", href: "/dsh-https/" }, "安装说明"),
+              h("a", { className: "dsh-https-btn dsh-https-btnSm", href: "/dsh-https/ca.crt" }, "下载证书")
+            )
+          );
+          localBody.push(
+            details(
+              "证书详情",
+              rows([
+                { label: "覆盖名称", value: listText(localCert.sans) },
+                { label: "根指纹", value: fmtFingerprint(localCert.caFingerprintSha256), mono: true },
+                { label: "私钥权限", value: localCert.caKeyMode ? "0o" + (Number(localCert.caKeyMode) & 0o777).toString(8).padStart(3, "0") : "—", mono: true },
+              ])
+            )
+          );
+        } else {
+          localBody.push(
+            callout("warn", "本地 CA 还没有准备好", localCert.error || "稍后再试。")
+          );
+        }
+        localCard = card("本地 CA", statusNode(localState.label, localState.tone), h("div", { className: "dsh-https-cardBody" }, localBody));
+      }
+
+      var warningsNode = warnings.length
+        ? details(
+            "配置提醒（" + warnings.length + "）",
+            h(
+              "ul",
+              { className: "dsh-https-warnList" },
+              warnings.map(function (message, index) {
+                return h("li", { key: index }, message);
+              })
+            )
+          )
+        : null;
+
+      return h(
         "div",
         { className: "dsh-https-page" },
         header,
-        toolbar,
         alerts,
-        overview,
-        settingsCard,
-        certificateCard("公网证书", certs.public, true),
-        certificateCard("本地 CA", certs.local, false),
-        acmeCard,
-        authCard
+        hero,
+        certCard,
+        authCard,
+        localCard,
+        warningsNode
       );
     }
 
