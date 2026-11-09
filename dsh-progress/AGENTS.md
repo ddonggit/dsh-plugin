@@ -228,14 +228,14 @@ node --check lib/index.js lib/text.js lib/anchor.js lib/signals.js lib/messages.
 4. 补测试：行为变化必须有断言，断言具体状态、文案、调用次数，不只断言「没抛异常」。
 5. 更新文档：`README.md` 的「用户看到什么」「模型怎么被管住」「已知边界」和 `## 变更记录`；用户可见变化升 `package.json` 版本，并同步根仓库 `README.md` 的插件表。
 6. 跑 `npm test`，确认 55 条全过；再跑 `node --check`。
-7. 提交：中文 Conventional Commits（如 `feat: 增加双模式方向纠偏`），**不 push**。
+7. 提交：只 `git add dsh-progress/...`，在父仓库 `/opt/dsh-plugins` 提交；中文 Conventional Commits（如 `feat: 增加双模式方向纠偏`）。默认不 push，用户明确要求时才推送；不 force push、不改写历史。
 
 ---
 
 ## 7. Git 与发布
 
-- 本插件是**独立本地仓库**：`/opt/dsh-plugins/dsh-progress/.git`，分支 `main`。父仓库 `/opt/dsh-plugins` 把整个目录当作未跟踪路径，本插件的提交落在这里，不要 `git add` 到父仓库。
-- 默认不 push（没有配置远端）。
+- 本插件源码随父仓库 `/opt/dsh-plugins` 管理，分支 `main`，远端 `origin`（GitHub `ddonggit/dsh-plugin`）。原来的独立 `.git` 已迁出并备份，**不要在 `dsh-progress/` 下重新初始化仓库**。
+- 只 `git add dsh-progress/...`，用 `git diff --cached --name-only` 复核只出现本目录；默认不 push，用户明确要求时才推送，且只允许快进，不 force push、不改写历史。
 - 只提交源码、测试、文档、`package.json`、`cordis.patch.yml`、`locale`、`icon`；不提交 `node_modules/`、`*.log`、截图、临时文件。
 - `files` 白名单决定发布内容：`AGENTS.md`、`test/` 不进包。
 - 用户可见变化按语义化版本升 `package.json` 的 `version`，同步根仓库 `README.md` 的插件表（那文件在父仓库，提交信息里写清是文档同步）。
