@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { access, readFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -642,4 +643,53 @@ test('gate: disabled means the proxy behaves exactly as before', async () => {
   const gate = createAuthGate({ config, store, logger: { info() {}, warn() {}, error() {} } });
   assert.equal(gate.handleRequest(makeRequest({ url: '/' }), makeResponse(), () => {}), false);
   assert.equal(gate.handleUpgrade(makeRequest({ url: '/api/remote.mux' }), { end() {}, destroy() {} }, null, () => {}), false);
+});
+
+test('gate: /penpot uses Penpot auth and never mints the core cookie', async () => {
+  const connection = { authenticatedUrl: (base) => `${base}/?${'tok' + 'en'}=LAUNCH-VALUE` };
+  const { gate, store } = await makeGate({ name: 'gate-penpot', connection });
+  const token = signSession({ sid: 'penpot-session', exp: Date.now() + 60_000 }, store.cachedSecret());
+  const req = makeRequest({
+    url: '/penpot/?file-id=x',
+    headers: { cookie: `${SESSION_COOKIE}=${token}`, host: 'api.example.test:3000' },
+  });
+  const handled = gate.handleRequest(req, makeResponse(), () => {});
+  assert.equal(handled, false, 'the gate must let /penpot reach the proxy directly');
+  assert.equal(req.url, '/penpot/?file-id=x');
+});
+
+test('gate: a mint bounce is single-shot and downgrades Strict to Lax', async () => {
+  const connection = { authenticatedUrl: (base) => `${base}/?${'tok' + 'en'}=LAUNCH-VALUE` };
+  const { gate, store, config } = await makeGate({ name: 'gate-mint-once', connection });
+  const upstream = createHttpServer((req, res) => {
+    res.writeHead(200, { 'set-cookie': 'dsh-auth-test=abc; Path=/; HttpOnly; SameSite=Strict' });
+    res.end('ok');
+  });
+  await new Promise((resolve) => upstream.listen(config.upstream.port, '127.0.0.1', resolve));
+  try {
+    const token = signSession({ sid: 'mint-session', exp: Date.now() + 60_000 }, store.cachedSecret());
+    const first = makeResponse();
+    const req1 = makeRequest({
+      url: '/app',
+      headers: { cookie: `${SESSION_COOKIE}=${token}`, host: 'api.example.test:3000' },
+    });
+    assert.equal(gate.handleRequest(req1, first, () => {}), true);
+    await waitEnded(first, 3000);
+    assert.equal(first.statusCode, 303);
+    assert.match(first.headers.location, /__dsh_mint=1/);
+    const setCookie = first.headers['set-cookie'];
+    const text = Array.isArray(setCookie) ? setCookie.join('\n') : String(setCookie);
+    assert.match(text, /SameSite=Lax/i);
+    assert.doesNotMatch(text, /SameSite=Strict/i);
+
+    const second = makeResponse();
+    const req2 = makeRequest({
+      url: '/app?__dsh_mint=1',
+      headers: { cookie: `${SESSION_COOKIE}=${token}`, host: 'api.example.test:3000' },
+    });
+    assert.equal(gate.handleRequest(req2, second, () => {}), false, 'the second pass must reach the upstream instead of redirecting again');
+    assert.equal(req2.url, '/app');
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
 });

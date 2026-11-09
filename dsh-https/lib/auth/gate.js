@@ -33,6 +33,7 @@ import { sanitizeError } from '../util.js';
 
 const FORM_LIMIT_BYTES = 4096;
 const MINT_TIMEOUT_MS = 5000;
+const MINT_LOOP_PARAM = '__dsh_mint';
 const AUTH_ALIASES = new Map([
   ['/dsh-https/login', `${AUTH_BASE}/login`],
   ['/dsh-https/logout', `${AUTH_BASE}/logout`],
@@ -80,8 +81,15 @@ function redirect(res, status, location, extra = {}) {
 
 function hardenCookies(cookies) {
   return (Array.isArray(cookies) ? cookies : [cookies]).filter(Boolean).map((cookie) => {
-    if (/;\s*secure\b/i.test(cookie)) return cookie;
-    return `${cookie}; Secure`;
+    // The core session cookie is minted as SameSite=Strict. A browser that
+    // follows the 303 back to the same URL counts the redirect as cross-site
+    // when the chain started from another origin (the panel, a link, a
+    // bookmark) and withholds a Strict cookie, so the gate mints again and the
+    // browser ends in ERR_TOO_MANY_REDIRECTS. Lax is still sent on top-level
+    // GET navigations and keeps the CSRF protection for cross-site POSTs.
+    let value = String(cookie).replace(/;\s*samesite=strict\b/gi, '; SameSite=Lax');
+    if (!/;\s*secure\b/i.test(value)) value = `${value}; Secure`;
+    return value;
   });
 }
 
@@ -279,7 +287,12 @@ export function createAuthGate({ config, store, logger = console, connection = n
   async function finishCoreSession(req, res, url, proceed) {
     const cookies = hardenCookies(await mintDshCookies(req));
     if (cookies.length > 0) {
-      redirect(res, 303, localTarget(url), { 'set-cookie': cookies });
+      // Mark this bounce once. If the browser still refuses to send the core
+      // cookie on the redirected request, the next pass proxies upstream
+      // instead of redirecting forever (ERR_TOO_MANY_REDIRECTS).
+      const next = new URL(localTarget(url), 'http://placeholder.local');
+      next.searchParams.set(MINT_LOOP_PARAM, '1');
+      redirect(res, 303, `${next.pathname}${next.search}`, { 'set-cookie': cookies });
       return;
     }
     const fallback = launchUrl(req);
@@ -506,15 +519,32 @@ export function createAuthGate({ config, store, logger = console, connection = n
       }
       if (isPublicPath(url.pathname)) return false;
 
+      // One bounce is allowed to mint the core cookie. If we are back here
+      // with the marker still set, the browser did not send that cookie, so
+      // let the upstream answer instead of starting another 303 loop.
+      const mintRetry = url.searchParams.has(MINT_LOOP_PARAM);
+      if (mintRetry) {
+        url.searchParams.delete(MINT_LOOP_PARAM);
+        req.url = `${url.pathname}${url.search}`;
+      }
+
       const session = currentSession(req);
       if (session) {
         // The core's own launch-token exchange must reach the core untouched.
         if (url.searchParams.has('token')) return false;
+        // Penpot is an independent app behind this proxy and authenticates
+        // with its own auth-token; it never needs the DSH core cookie. Minting
+        // one here is what produced the 303 loop when the browser withheld it.
+        if (url.pathname === '/penpot' || url.pathname.startsWith('/penpot/')) return false;
+        if (mintRetry) return false;
         if (hasDshCookie(req) || !cfg.mintDshCookie || !mintAvailable()) return false;
         void finishCoreSession(req, res, url, proceed).catch((error) => {
           logger.warn?.(`[dsh-https] 核心会话换取流程失败：${sanitizeError(error)}`);
-          if (!res.headersSent) redirect(res, 302, localTarget(url));
-          else if (!res.writableEnded) res.end();
+          if (!res.headersSent) {
+            const next = new URL(localTarget(url), 'http://placeholder.local');
+            next.searchParams.set(MINT_LOOP_PARAM, '1');
+            redirect(res, 302, `${next.pathname}${next.search}`);
+          } else if (!res.writableEnded) res.end();
         });
         return true;
       }
@@ -535,6 +565,9 @@ export function createAuthGate({ config, store, logger = console, connection = n
       const url = requestUrl(req);
       if (!url) return false;
       if (isAuthPath(url.pathname) || isPublicPath(url.pathname)) return false;
+      // Penpot's own WebSocket handshake carries its auth-token; no DSH core
+      // cookie is needed and a missing one must not deny the upgrade.
+      if (url.pathname === '/penpot' || url.pathname.startsWith('/penpot/')) return false;
       const session = currentSession(req);
       if (session && (hasDshCookie(req) || !cfg.mintDshCookie || !mintAvailable())) return false;
       try {
