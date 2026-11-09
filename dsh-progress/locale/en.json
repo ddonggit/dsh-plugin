@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Progress & sessions",
+    "description": "The model reports what it is doing, what broke, and what comes next; silence is nudged at first, then blocked. The sidebar and header also gather running, waiting, and recently finished sessions across workspaces."
+  }
+}

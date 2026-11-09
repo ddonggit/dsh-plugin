@@ -1,0 +1,36 @@
+{
+  "name": "dsh-progress",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "让模型主动汇报进展、偏离目标时提醒/拉回；并在同一套界面里汇总跨工作区的运行中、等待确认、刚完成会话。",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
+  "files": [
+    "lib/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  }
+}
