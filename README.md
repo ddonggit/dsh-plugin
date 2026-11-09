@@ -11,12 +11,15 @@
 | 目录 | 包名 | 版本 | 作用 |
 |---|---|---|---|
 | [`dsh-https`](dsh-https) | `dsh-https` | 0.3.0 | 独立 HTTPS 入口 + 可选登录鉴权闸门：TLS 终止、透明反向代理、本地 CA / ACME（腾讯云 DNSPod DNS-01）自动证书；开鉴权后 `/plugins/*`、`/api/*`、WebSocket 与插件自有路由（如 `/__bili/*`）都要先登录 |
-| [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.7.0 | Web 端移动布局（抽屉侧栏、全屏面板、安全区、触控优化）+ 任务完成/等待确认通知（浏览器通知与宿主端多通道推送） |
-| [`dsh-restart`](dsh-restart) | `dsh-restart` | 1.1.0 | 受控重启 dsh web：自动识别 systemd 单元 / 无 systemd 直接重启，HTTPS/具体网卡探测，阶段化进度与失败现场 |
-| [`dsh-running-sessions`](dsh-running-sessions) | `dsh-running-sessions` | 0.1.0 | 跨工作区汇总「运行中 / 等待你处理 / 刚完成」的会话，一个入口直达 |
+| [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.8.0 | 任务完成/等待确认通知（浏览器通知与宿主端多通道推送）；移动布局交给 DSH 0.2.2 核心 |
+| [`dsh-penpot`](dsh-penpot) | `dsh-penpot` | 0.1.0 | 本机 Penpot 管理 + MCP：独立端口 3300，用户手动登录，AI 生成可编辑海报与印刷稿；支持 Linux/macOS/Windows（DSH Desktop + Docker Desktop） |
+| [`dsh-progress`](dsh-progress) | `dsh-progress` | 0.3.0 | 让模型主动汇报进展：连续不汇报先软提醒、再拦下一次工具调用；双模式方向纠偏 + 工具提示（不调用 LLM）；纯状态消息不打扰；对话内进展卡片 + 状态条；跨工作区「进行中 / 待确认 / 刚完成」会话总览（已并入原 dsh-running-sessions） |
+| [`dsh-restart`](dsh-restart) | `dsh-restart` | 1.2.0 | 受控重启 dsh web：自动识别 systemd 单元 / 无 systemd 直接重启，HTTPS/具体网卡探测，阶段化进度与失败现场 |
 | [`dsh-usage-query`](dsh-usage-query) | `dsh-usage-query` | 0.3.1 | 设置页「用量查询」：DeepSeek 余额、OpenCode Go 配额、OpenDesign 余额与积分 |
 
 有 README 的插件在各自目录里给出配置、接口与排障说明；没有 README 的看 `package.json` 的 `description` 与 `locale/*.json` 的界面文案。
+
+> 原 `dsh-running-sessions` 已于 2026-11-07 并入 `dsh-progress` 0.3.0：会话总览、入口开关都搬进了 progress，设置面板里的「进行中的会话」已移除。`dsh-running-sessions/` 目录只保留作历史参考，**不要再单独装进 profile**。
 
 ### 可移植的重启（dsh-restart 1.1+）
 
@@ -105,7 +108,7 @@ node "$DSH_HOME/skills/dsh-plugin-dev/scripts/check-bundle.mjs" .
 
 - `dsh-restart` 的 Windows 直接重启未验证；Linux（有/无 systemd）已实测，macOS 依赖 `lsof`/`ps` 尽力支持。
 - `dsh-https` 的登录鉴权是**单口令**访问控制：没有多用户、没有二次验证，只能靠"改密让全员下线"；开启后必须让 DSH 自己的监听只绑回环（`--host 127.0.0.1`），否则同机进程或另一个入口可以绕过闸门。
-- `dsh-running-sessions/design/` 只保留可重放的 HTML 原型；真实环境截图含个人会话标题，未纳入仓库。
+- `dsh-running-sessions/` 已并入 `dsh-progress`，目录只作历史参考；其中的 `design/` 只保留可重放的 HTML 原型，真实环境截图含个人会话标题，未纳入仓库。
 - 各插件以本地自用为主，浏览器半的视觉与交互多靠人工验证，未做自动化 UI 测试。
 
 ## 许可
