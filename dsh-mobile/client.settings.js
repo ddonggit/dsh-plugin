@@ -16,9 +16,8 @@ window.__ModuleLoader__.load({
 let api = null;
 
 /**
- * Entry-owned platform facts: live context, chunk table, sidebar, the header
- * menu button's registration, the forensics recorder (read-only) and the two
- * lazy chunk loaders.
+ * Entry-owned platform facts: live context, chunk table, the forensics recorder
+ * (read-only) and the two lazy chunk loaders.
  */
 let platform = null;
 
@@ -255,8 +254,6 @@ function makeDiagnosticsCard(t) {
             module.createPanel({
               ctx: platform.ctx,
               chunkStatus: platform.chunkStatus,
-              sidebar: platform.sidebar,
-              menu: platform.menu,
               forensics: platform.forensics,
               resourceCompat: platform.resourceCompat,
               api,

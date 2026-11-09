@@ -3,13 +3,13 @@
  *
  * Loaded on demand from the settings page. Its job is to make one class of
  * failure visible without a desktop devtools session: a client module (or one of
- * this plugin's own chunks) that never arrived, a layout contract that moved
- * after a Harness upgrade, a missing resource provider, a browser too old for
- * the CSS the skin relies on.
+ * this plugin's own chunks) that never arrived, a missing resource provider, a
+ * browser too old for the notification stack, or a host half that did not
+ * answer.
  *
  * Everything here is measured, not guessed: the module list comes from the live
- * module system (`ctx.modules`), the selector hit counts from the DOM, the host
- * facts from the public `/plugins/dsh-mobile/meta` route, and the resource
+ * module system (`ctx.modules`), the host facts from the public
+ * `/plugins/dsh-mobile/meta` route, and the resource
  * subscription / console evidence from the forensics recorder the entry installs
  * at boot (`client.forensics.js`). The report is plain text so it can be copied
  * in one tap and pasted into an issue.
@@ -49,12 +49,10 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** `Promise.withResolvers`, `dvh`, `:has()` — the three the skin needs. */
+    /** `Promise.withResolvers` — the one browser API the notification stack needs. */
     function features() {
       return {
         withResolvers: typeof Promise.withResolvers === 'function',
-        dvh: safe(() => CSS.supports?.('height', '100dvh') === true, false),
-        has: safe(() => CSS.supports?.('selector(:has(*))') === true, false),
       };
     }
 
@@ -126,32 +124,18 @@ window.__ModuleLoader__.load({
     /**
      * Collect every fact into one plain-text report plus the derived problems.
      *
-     * `deps`: `{ ctx, chunkStatus, sidebar, menu, api, t }` — the entry hands over
-     * the module context, its chunk table, the sidebar state machine and the menu
-     * button's registration outcome; the settings page adds the notification API.
+     * `deps`: `{ ctx, chunkStatus, api, t }` — the entry hands over the module
+     * context and its chunk table; the settings page adds the notification API.
      */
     async function collect(deps) {
-      const { ctx, chunkStatus, sidebar, api } = deps ?? {};
+      const { ctx, chunkStatus, api } = deps ?? {};
       const problems = [];
-      const layoutRead = attempt(() => sidebar?.diagnostics?.());
-      const layout = layoutRead.value;
       const moduleRead = attempt(() => (typeof ctx?.get === 'function' ? ctx.get('modules') : undefined));
       const moduleService = moduleRead.value;
       const modules = moduleFailures(moduleService);
       const chunks = chunkFailures(chunkStatus);
       const host = await hostFacts();
       const caps = features();
-
-      // The header menu button: whether its slot registration went through (the
-      // entry records that) and whether the button it renders is in the DOM.
-      const registered = deps?.menu?.registered === true;
-      const mounted = attempt(() => document.querySelector('.dshm-menu') !== null, false);
-      const menu = {
-        slot: deps?.menu?.slot || 'conversation.header.leading',
-        registered,
-        mounted: mounted.value,
-        error: deps?.menu?.error || (mounted.error ? `query threw: ${mounted.error}` : ''),
-      };
 
       const resourcesRead = attempt(() => (typeof ctx?.get === 'function' ? ctx.get('resources') : undefined));
       const resources = resourcesRead.value;
@@ -192,7 +176,6 @@ window.__ModuleLoader__.load({
           '?',
         )}x`,
       );
-      lines.push(`${pad('narrow')}${yesNo(safe(() => window.matchMedia('(max-width: 1024px)').matches, false))} (max-width: 1024px)`);
       lines.push(`${pad('secure')}${yesNo(safe(() => window.isSecureContext, false))}`);
 
       let shell = 'none';
@@ -207,20 +190,6 @@ window.__ModuleLoader__.load({
       lines.push('');
       lines.push('-- features --');
       lines.push(`${pad('withResolvers')}${yesNo(caps.withResolvers)}`);
-      lines.push(`${pad('css dvh')}${yesNo(caps.dvh)}`);
-      lines.push(`${pad('css :has()')}${yesNo(caps.has)}`);
-
-      lines.push('');
-      lines.push('-- layout --');
-      if (layout) {
-        lines.push(`${pad('surface')}${layout.surface === true ? 'mobile' : 'desktop'} (marker ${yesNo(layout.surface === true)})`);
-        lines.push(`${pad('state')}${layout.state}`);
-        lines.push(`${pad('marked')}${Object.entries(layout.marked ?? {}).map(([key, value]) => `${key}=${value}`).join(' ')}`);
-        lines.push(`${pad('menu')}slot ${menu.slot} · registered ${yesNo(menu.registered)} · mounted ${yesNo(menu.mounted)}${menu.error ? ` · ${menu.error}` : ''}`);
-        lines.push(`${pad('selectors')}${Object.entries(layout.selectors ?? {}).map(([key, value]) => `${key}=${value}`).join(' ')}`);
-      } else {
-        lines.push(`${pad('layout')}sidebar module not loaded${layoutRead.error ? ` (${layoutRead.error})` : ''}`);
-      }
 
       lines.push('');
       lines.push(
@@ -276,17 +245,9 @@ window.__ModuleLoader__.load({
       if (chunks.failed.length > 0) {
         problems.push(`${chunks.failed.length} plugin chunk(s) failed to load: ${chunks.failed.map((item) => item.name).join(', ')}`);
       }
-      if (!caps.dvh) problems.push('CSS dvh is unsupported: viewport height may be wrong when the address bar moves');
-      if (!caps.has) problems.push('CSS :has() is unsupported: parts of the mobile skin will not apply');
       if (!caps.withResolvers) problems.push('Promise.withResolvers is missing: this browser is older than the plugin expects');
       if (!safe(() => window.isSecureContext, false)) {
         problems.push('not a secure context: browser notifications cannot be shown (the host push path still works)');
-      }
-      if (layout && layout.surface === true) {
-        const hits = layout.selectors ?? {};
-        if (!hits.sidebarCol) problems.push('the sidebar column was not found: the layout contract changed');
-        else if (!layout.marked?.frame) problems.push('the sidebar frame was found but not marked: the skin cannot apply');
-        if (!menu.mounted) problems.push(`the header menu button is not rendered on the mobile surface (slot ${menu.slot}${menu.registered ? '' : ' not registered'})`);
       }
       if (!resources) problems.push('the resources service is missing: attachments and previews may not load');
       else if (fileProvider === false) problems.push('no provider for the file resource protocol: file previews and uploads will not render');

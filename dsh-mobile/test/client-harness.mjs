@@ -1,6 +1,6 @@
 /**
- * Offline integration harness for the client half: the chunk split and the
- * sidebar state machine.
+ * Offline integration harness for the client half: the chunk split, the
+ * notification stack and the no-layout contract.
  *
  *   node test/client-harness.mjs
  *
@@ -13,8 +13,8 @@
  * Reproduces the parts of the client module loader, React, the DOM and the
  * official layout service that the plugin touches, then runs the real client.js
  * entry and its chunks. A missing export, a stray reference, a broken chunk path
- * or a state machine that drifts fails here instead of on the phone. Nothing is
- * written to the plugin directory.
+ * or a layout rule that creeps back in fails here instead of on the phone.
+ * Nothing is written to the plugin directory.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -539,94 +539,49 @@ exportsObject.apply(ctx);
 await new Promise((resolve) => setTimeout(resolve, 80));
 
 // ---- chunk + wiring assertions -------------------------------------------
-for (const chunk of ['client.styles.js', 'client.resource-compat.js', 'client.forensics.js', 'client.sidebar.js', 'client.deeplink.js', 'client.notify.js']) {
+for (const chunk of ['client.styles.js', 'client.resource-compat.js', 'client.forensics.js', 'client.deeplink.js', 'client.notify.js']) {
   if (!loadCache.has(chunk)) fail(`${chunk} was not loaded at boot`);
 }
 if (loadCache.has('client.diagnostics.js')) fail('the diagnostics chunk must not load at boot');
 if (loadCache.has('client.settings.js')) fail('client.settings.js must stay lazy');
+if (loadCache.has('client.sidebar.js')) fail('client.sidebar.js must be gone');
 
 const critical = styleElements.find((node) => node.getAttribute('data-plugin') === 'dsh-mobile-critical');
-if (!critical) fail('critical CSS is not injected synchronously');
-if (!critical?.textContent?.includes('data-sidebar-collapsed')) fail('critical CSS does not hide the default sidebar');
-// The frame is a child of the renderer's `div[data-slot="root"]`, not of #root.
-if (!critical?.textContent?.includes('div[data-slot=\"root\"] > div[style*=\"grid-template-columns\"][data-sidebar-collapsed]')) {
-  fail('critical CSS does not target the real frame position');
-}
-if (/#root\s*>\s*div\[style/.test(critical?.textContent ?? '')) fail('critical CSS still uses the #root > frame form');
-if (critical?.isConnected !== false) fail('critical CSS outlived the real skin');
-
+if (critical) fail('critical CSS must be gone: core owns the layout');
 const style = styleElements.find((node) => node.getAttribute('data-plugin') === 'dsh-mobile');
 if (!style) fail('styles chunk did not inject the plugin stylesheet');
 const css = style?.textContent ?? '';
 if (!css.includes('dshm-notify')) fail('stylesheet is missing the pill rules');
-if (!css.includes('data-dshm-surface="mobile"')) fail('stylesheet is not scoped by the surface marker');
-if (!css.includes('[data-sidebar-collapsed]')) fail('stylesheet has no hidden-state rule');
-if (css.includes('.dshm-toggle')) fail('stylesheet still carries the removed floating button');
-if (css.includes('data-dshm-rail')) fail('stylesheet still references the removed rail state');
-if (css.includes('--dsh-frame-leading-clearance')) fail('stylesheet still reserves the removed header band');
+if (!css.includes('dshm-page')) fail('stylesheet is missing the settings page rules');
+if (css.includes('dshm-menu')) fail('stylesheet still carries the removed menu button');
+if (css.includes('data-dshm-surface')) fail('stylesheet still owns the layout surface');
+if (css.includes('data-sidebar-collapsed')) fail('stylesheet still styles the sidebar');
+if (css.includes('100dvh')) fail('stylesheet still owns viewport height');
+if (css.includes('env(safe-area')) fail('stylesheet still owns safe-area insets');
+if (css.includes('md-table-wide')) fail('stylesheet still overrides the markdown table');
+if (!css.includes('@media (pointer: coarse)')) fail('coarse-pointer input polish is missing');
+if (!css.includes('font-size: 16px')) fail('16px input polish is missing');
 
-// Wide markdown tables: the shell hides their horizontal overflow until hover,
-// which a touch screen never produces. The mobile surface must scroll instead.
-const wideTableRule = /body\[data-dshm-surface="mobile"\] \.md-table-wide \{([^}]*)\}/.exec(css);
-if (!wideTableRule) fail('stylesheet is missing the mobile wide-table rule');
-if (!/overflow-x:\s*auto/.test(wideTableRule?.[1] ?? '')) {
-  fail('wide markdown tables are not scrollable on the mobile surface');
-}
-
-// The header menu button: 40x40 transparent hot zone, 20x20 glyph, colour from
-// an official token so both themes adapt. No hard-coded palette, no shadow.
-const menuRule = /body\[data-dshm-surface="mobile"\] \.dshm-menu \{([^}]*)\}/.exec(css);
-if (!menuRule) fail('stylesheet is missing the header menu button rule');
-const menuCss = menuRule?.[1] ?? '';
-if (!/background:\s*transparent/.test(menuCss)) fail('menu button is not transparent');
-if (!menuCss.includes('var(--dsw-alias-label-secondary)')) fail('menu button does not use an official colour token');
-if (!/width:\s*40px/.test(menuCss) || !/height:\s*40px/.test(menuCss)) fail('menu button hot zone is not 40x40');
-if (/box-shadow|#fff|#000|rgba\(/.test(menuCss)) fail('menu button hard-codes a colour or a shadow');
-const menuActive = /body\[data-dshm-surface="mobile"\] \.dshm-menu:active \{([^}]*)\}/.exec(css);
-if (!menuActive) fail('menu button has no pressed state');
-if (/box-shadow|#fff|#000|rgba\(/.test(menuActive?.[1] ?? '')) fail('menu button pressed state hard-codes a colour');
-if (!css.includes('body[data-dshm-surface="mobile"] .dshm-menu svg')) fail('menu glyph size is not pinned to 20px');
-if (!css.includes('var(--dsw-alias-interactive-bg-hover)')) fail('menu pressed state does not use the official hover token');
-// ---- DOM contract ---------------------------------------------------------
-// Only client.sidebar.js may name a compressed CSS-module class; every other
-// file — the stylesheet included — has to go through the data-dshm-* markers.
-const CONTRACT_CLASSES = [
-  '_frame',
-  '_sidebarCol',
-  '_centerCol',
-  '_rightbarCol',
-  '_toggle',
-  '_handle',
-  '_newSession',
-  '_panelList',
-  '_regionArea',
-  '_footArea',
-  '_logoRow',
-  '_panelIcon',
-  '_railMark',
-];
-for (const file of ['client.js', 'client.styles.js', 'client.deeplink.js', 'client.notify.js', 'client.resource-compat.js', 'client.forensics.js', 'client.settings.js', 'client.diagnostics.js']) {
+// No source may reach back into the layout contract; core owns the drawer,
+// the rail, the right panel, the settings nav and the question card.
+const LAYOUT_MARKERS = ['data-dshm-surface', 'data-dshm-toggle', 'data-dshm-frame', 'data-dshm-sidecol', 'data-dshm-center', 'data-dshm-rightcol', 'dshm-menu', 'client.sidebar.js'];
+for (const file of [
+  'client.js',
+  'client.styles.js',
+  'client.deeplink.js',
+  'client.notify.js',
+  'client.resource-compat.js',
+  'client.forensics.js',
+  'client.settings.js',
+  'client.diagnostics.js',
+]) {
   const text = readFileSync(`${dir}/${file}`, 'utf8');
-  const leaked = CONTRACT_CLASSES.filter((name) => text.includes(name));
-  if (leaked.length > 0) fail(`${file} names a sidebar contract class: ${leaked.join(', ')}`);
-}
-const sidebarSource = readFileSync(`${dir}/client.sidebar.js`, 'utf8');
-for (const name of ['_sidebarCol', '_centerCol', '_rightbarCol', '_toggle', '_handle']) {
-  if (!sidebarSource.includes(name)) fail(`client.sidebar.js SEL table lost ${name}`);
+  const leaked = LAYOUT_MARKERS.filter((marker) => text.includes(marker));
+  if (leaked.length > 0) fail(`${file} still references the layout contract: ${leaked.join(', ')}`);
 }
 
-const menuSlot = slots.find((slot) => slot.definition.id === 'dsh-mobile-menu');
-const floatingSlot = slots.find((slot) => slot.definition.id === 'dsh-mobile-toggle');
 const overlaySlot = slots.find((slot) => slot.definition.name === 'shell.overlay' && slot.definition.id === 'dsh-mobile-notify');
 const settingsSlot = slots.find((slot) => slot.definition.name === 'settings.section');
-if (!menuSlot) fail('header menu button slot not registered');
-if (menuSlot.definition.name !== 'conversation.header.leading') {
-  fail(`menu button registered in ${menuSlot.definition.name}, expected conversation.header.leading`);
-}
-if (floatingSlot) fail('the removed floating button is still registered in shell.overlay');
-if (slots.some((slot) => slot.definition.name === 'shell.overlay' && slot.definition.id === 'dsh-mobile-menu')) {
-  fail('the menu button must not be registered in shell.overlay');
-}
 if (!overlaySlot) fail('notification pill slot not registered');
 if (!settingsSlot) fail('settings.section slot not registered');
 if (settingsSlot?.definition.label() !== 't:sTitle') fail('settings slot label uses the locale');
@@ -639,7 +594,6 @@ if (overlaySlot.component.name !== 'NotifyHint') fail('overlay component is not 
 const sourceFiles = [
   'client.js',
   'client.styles.js',
-  'client.sidebar.js',
   'client.deeplink.js',
   'client.notify.js',
   'client.resource-compat.js',
@@ -658,176 +612,6 @@ for (const language of ['en', 'zh']) {
   const missing = [...usedKeys].filter((key) => !(key in messages));
   if (missing.length > 0) fail(`locale ${language} is missing t() keys: ${missing.join(', ')}`);
 }
-
-// ---- markers --------------------------------------------------------------
-if (body.getAttribute('data-dshm-surface') !== 'mobile') fail('surface marker not set on a narrow viewport');
-if (frame.getAttribute('data-dshm-frame') === null) fail('frame not marked');
-if (sidecol.getAttribute('data-dshm-sidecol') === null) fail('sidebar column not marked');
-if (center.getAttribute('data-dshm-center') === null) fail('center column not marked');
-if (rightcol.getAttribute('data-dshm-rightcol') === null) fail('right column not marked');
-
-const sidebarExports = loadCache.get('client.sidebar.js');
-for (const key of ['installSidebar', 'makeMenuButton', 'SEL', 'MARK']) {
-  if (!sidebarExports?.[key]) fail(`sidebar missing ${key}`);
-}
-if (sidebarExports?.makeSidebarToggle) fail('client.sidebar.js still exports the removed floating toggle');
-if (!Object.keys(sidebarExports?.MARK ?? {}).every((key) => key !== 'rail')) fail('the rail marker is still declared');
-if (!/^\[class\*="_sidebarCol"\]$/.test(sidebarExports.SEL.sidebarCol)) fail('SEL.sidebarCol is not the documented selector');
-if (!/^\[class\*="_toggle"\]$/.test(sidebarExports.SEL.toggle)) fail('SEL.toggle is not the documented selector');
-
-// ---- state machine -------------------------------------------------------
-// Two states only: hidden (conversation full screen) and drawer (the sidebar
-// over the conversation). Both transitions are the official toggle; the plugin
-// writes no state of its own, so `data-dshm-rail` must never appear.
-const menuUi = menuSlot;
-const renderMenu = () => {
-  hookCursor = 0;
-  hookState = [];
-  hookEffects = [];
-  return menuUi.component();
-};
-
-const button = renderMenu();
-if (!button || button.type !== 'button') fail('header menu button does not render on the mobile surface');
-if (button.props.className !== 'dshm-menu') fail(`unexpected menu button class: ${button.props.className}`);
-if (button.props['data-dshm-toggle'] !== 'menu') fail(`unexpected toggle marker: ${button.props['data-dshm-toggle']}`);
-if (button.props['aria-label'] !== 't:navHidden') fail('button label for the hidden state');
-
-const glyph = button.children[0];
-if (!glyph || glyph.type !== 'svg') fail('menu button does not render an svg glyph');
-if (glyph?.props?.width !== 20 || glyph?.props?.height !== 20) fail('menu glyph is not 20x20');
-if (glyph?.props?.fill !== 'none') fail('menu glyph is not stroke-only');
-if (glyph?.props?.stroke !== 'currentColor') fail('menu glyph does not inherit its colour');
-if (glyph?.props?.strokeWidth !== 1.6) fail('menu glyph stroke width changed');
-const glyphLines = (glyph?.children ?? []).flat();
-if (glyphLines.length !== 3 || glyphLines.some((line) => line.type !== 'line')) {
-  fail('menu glyph is not three lines');
-}
-
-button.props.onClick();
-if (toggles !== 1) fail(`hidden -> drawer should call the official toggle once, got ${toggles}`);
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('frame is still collapsed after opening the drawer');
-if (body.getAttribute('data-dshm-rail') !== null) fail('a rail marker appeared on the way into the drawer');
-
-// drawer -> hidden: the same official toggle, nothing else.
-const drawerButton = renderMenu();
-if (drawerButton.props['aria-label'] !== 't:navDrawer') fail('button label for the drawer state');
-drawerButton.props.onClick();
-if (toggles !== 2) fail(`drawer -> hidden should call the official toggle once, got ${toggles}`);
-if (!frame.hasAttribute('data-sidebar-collapsed')) fail('frame did not collapse');
-if (body.getAttribute('data-dshm-rail') !== null) fail('drawer -> hidden left a rail marker behind');
-
-// ---- drawer tap rules ----------------------------------------------------
-// Taps inside the drawer close it, taps outside close it, and the official
-// collapse button is left alone because it toggles the layout itself.
-const setCollapsed = (collapsed) => {
-  if (collapsed) frame.setAttribute('data-sidebar-collapsed', 'true');
-  else frame.removeAttribute('data-sidebar-collapsed');
-  for (const observer of observers) observer.callback([{ type: 'attributes', attributeName: 'data-sidebar-collapsed' }]);
-};
-const fire = (type, target) => {
-  for (const item of documentListeners.filter((entry) => entry.type === type)) item.fn({ target });
-};
-const sessionRow = new FakeElement('div', ['hHd-Xa_row']);
-sessionRow.parentElement = sidebarRoot;
-const conversationRow = new FakeElement('div', ['wSkVaW_root']);
-conversationRow.parentElement = center;
-
-setCollapsed(false);
-fire('click', sessionRow);
-if (toggles !== 3) fail(`a session tap inside the drawer should close it once, got ${toggles}`);
-if (!frame.hasAttribute('data-sidebar-collapsed')) fail('a session tap did not collapse the frame');
-
-// A menu trigger inside the drawer (the account "more" button) opens a portal
-// popover anchored to itself: closing the drawer would hide the anchor and the
-// popover would fall back to the top-left corner, so it must be left alone.
-const menuTrigger = new FakeElement('button', ['hHd-Xa_more']);
-menuTrigger.setAttribute('aria-label', '账号菜单');
-menuTrigger.setAttribute('aria-haspopup', 'menu');
-menuTrigger.parentElement = sidebarRoot;
-const menuTriggerGlyph = new FakeElement('svg', []);
-menuTriggerGlyph.parentElement = menuTrigger;
-menuTrigger.children.push(menuTriggerGlyph);
-
-setCollapsed(false);
-fire('click', menuTriggerGlyph);
-if (toggles !== 3) fail(`a menu trigger tap inside the drawer must not close it, got ${toggles}`);
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('a menu trigger tap collapsed the drawer');
-const menuTriggerLabel = new FakeElement('div', ['hHd-Xa_label']);
-menuTriggerLabel.setAttribute('role', 'menu');
-menuTriggerLabel.parentElement = sidebarRoot;
-fire('click', menuTriggerLabel);
-if (toggles !== 3) fail(`a role=menu tap inside the drawer must not close it, got ${toggles}`);
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('a role=menu tap collapsed the drawer');
-
-// The account menu and the settings dialog are portalled to `document.body`, so
-// they are not inside the sidebar column even though a sidebar button opened
-// them. A real finger tap is down … up one frame apart: the drawer hides on
-// pointerdown, the anchor collapses, the menu jumps to the top-left corner and
-// the click lands on the conversation instead of the menu item. The 0.5.1
-// click-phase passthrough below never runs in that order — pointerdown must let
-// portalled overlays through on its own.
-const portalMenu = new FakeElement('div', ['_portal_4ub78_41']);
-portalMenu.setAttribute('role', 'menu');
-portalMenu.parentElement = body;
-body.children.push(portalMenu);
-const settingsItem = new FakeElement('div', ['_portal_4ub78_41_item']);
-settingsItem.setAttribute('role', 'menuitem');
-settingsItem.parentElement = portalMenu;
-portalMenu.children.push(settingsItem);
-
-setCollapsed(false);
-fire('pointerdown', settingsItem);
-if (toggles !== 3) fail(`a pointerdown on a portalled menu item must not close the drawer, got ${toggles}`);
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('a portalled menu item pointerdown collapsed the drawer');
-
-const settingsDialog = new FakeElement('div', ['_portal_4ub78_41_dialog']);
-settingsDialog.setAttribute('role', 'dialog');
-settingsDialog.parentElement = body;
-body.children.push(settingsDialog);
-setCollapsed(false);
-fire('pointerdown', settingsDialog);
-if (toggles !== 3) fail(`a pointerdown inside the portalled settings dialog must not close the drawer, got ${toggles}`);
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('a settings dialog pointerdown collapsed the drawer');
-
-// The same drawer, the same handler: an ordinary session row still closes it.
-setCollapsed(false);
-fire('click', sessionRow);
-if (toggles !== 4) fail(`a session tap after a menu tap should still close it, got ${toggles}`);
-if (!frame.hasAttribute('data-sidebar-collapsed')) fail('the drawer stayed open after a session tap');
-
-setCollapsed(false);
-fire('click', toggleButton);
-if (toggles !== 4) fail('the official collapse button must be left to the official toggle');
-if (frame.hasAttribute('data-sidebar-collapsed')) fail('the official toggle must not close the drawer from our handler');
-
-setCollapsed(false);
-fire('pointerdown', conversationRow);
-if (toggles !== 5) fail(`a tap on the mask should close the drawer once, got ${toggles}`);
-if (!frame.hasAttribute('data-sidebar-collapsed')) fail('a mask tap did not collapse the frame');
-
-// Regression: the pointerdown passthrough must not swallow real outside taps.
-// The conversation column is still an outside tap and still closes the drawer.
-setCollapsed(false);
-fire('pointerdown', center);
-if (toggles !== 6) fail(`a pointerdown on the conversation column must still close the drawer, got ${toggles}`);
-if (!frame.hasAttribute('data-sidebar-collapsed')) fail('a conversation-column pointerdown did not collapse the frame');
-
-fire('pointerdown', conversationRow);
-if (toggles !== 6) fail('an outside tap in the hidden state must not call the official toggle');
-
-// Desktop: no button at all.
-// Desktop: no button at all.
-viewportMobile = false;
-for (const observer of observers) observer.callback([{ type: 'childList' }]);
-await new Promise((resolve) => setTimeout(resolve, 30));
-hookCursor = 0;
-hookState = [];
-if (menuUi.component() !== null) fail('header menu button still renders on a desktop viewport');
-if (body.getAttribute('data-dshm-surface') !== null) fail('surface marker survived the desktop resize');
-viewportMobile = true;
-for (const observer of observers) observer.callback([{ type: 'childList' }]);
-await new Promise((resolve) => setTimeout(resolve, 30));
 
 // ---- settings section stays lazy ----------------------------------------
 hookCursor = 0;
@@ -1408,18 +1192,8 @@ const cleanDeps = {
   resourceCompat: desktopCompat,
   chunkStatus: new Map([
     ['styles', { ok: true }],
-    ['sidebar', { ok: true }],
     ['notify', { ok: true }],
   ]),
-  menu: { slot: 'conversation.header.leading', registered: true, error: '' },
-  sidebar: {
-    diagnostics: () => ({
-      surface: true,
-      state: 'hidden',
-      marked: { frame: true, sidecol: 1, center: 1, rightcol: 1 },
-      selectors: { sidebarCol: 1, centerCol: 1, rightbarCol: 1, toggle: 1, handle: 0 },
-    }),
-  },
   api: { notificationState: () => 'granted' },
   t: (key) => `t:${key}`,
 };
@@ -1439,10 +1213,6 @@ if (!clean.text.includes('unparsed alias no (url parser normal)')) {
   fail('diagnostics did not report the inert compat alias');
 }
 if (clean.text.includes('the compatibility alias took over')) fail('a normal parser must not report a takeover');
-if (!clean.text.includes('slot conversation.header.leading')) fail('diagnostics lost the menu slot row');
-if (!clean.text.includes('registered yes · mounted yes')) fail('diagnostics did not report the mounted menu button');
-if (!/^state\s+hidden$/m.test(clean.text)) fail('diagnostics lost the two-state layout row');
-if (/^state\s+.*rail/m.test(clean.text)) fail('diagnostics still prints a rail fact');
 if (!clean.text.includes('-- resource subscriptions --')) fail('diagnostics has no resource subscriptions section');
 if (!clean.text.includes('-- console --')) fail('diagnostics has no console section');
 if (!clean.text.includes(sampleAddress)) fail('diagnostics dropped the recorded address');
@@ -1504,16 +1274,6 @@ if (!withConsole.text.includes('[dsh-mobile]') && !withConsole.text.includes('bo
   fail('diagnostics dropped the console error');
 }
 if (withConsole.problems.length !== 0) fail(`a console row must stay out of the conclusion: ${withConsole.problems.join(' | ')}`);
-
-// A mobile surface whose header menu button never reached the DOM is a finding:
-// it is the only way into the sidebar now.
-menuMounted = false;
-const noMenu = await diagnostics.collect({ ...cleanDeps });
-menuMounted = true;
-if (!noMenu.text.includes('mounted no')) fail('diagnostics did not report the missing menu button');
-if (!noMenu.problems.some((item) => item.includes('header menu button'))) {
-  fail('a missing header menu button is not in the conclusion');
-}
 if (!withConsole.text.includes('no problems detected')) fail('a console row made the report fail');
 
 // ---- forensics: the failure moment keeps its own snapshot -------------------
@@ -1569,7 +1329,6 @@ const settingsExports = loadCache.get('client.settings.js');
 settingsExports.install(notifyApi, {
   ctx: cleanDeps.ctx,
   chunkStatus: cleanDeps.chunkStatus,
-  sidebar: cleanDeps.sidebar,
   loadDiagnostics: () => {
     panelLoads += 1;
     return Promise.resolve({ createPanel: () => MarkerPanel });
@@ -1623,7 +1382,6 @@ for (const dispose of effects.reverse()) {
     fail(`dispose threw: ${error.message}`);
   }
 }
-if (body.getAttribute('data-dshm-rail') !== null) fail('a rail marker existed at all');
 if (services.resources.source !== pristineResourceSource) fail('dispose did not restore resources.source');
 
 console.log(log.join('\n'));

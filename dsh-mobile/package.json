@@ -1,10 +1,10 @@
 {
   "name": "dsh-mobile",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "main": "./index.js",
-  "description": "DSH Web 移动端适配 + 任务完成/等待确认通知：浏览器通知（需 HTTPS）与宿主端多通道推送（飞书/钉钉/企业微信/Telegram/ntfy/Server酱/Webhook），点击直达会话。",
+  "description": "DSH Web 任务通知：浏览器通知（需 HTTPS）与宿主端多通道推送（飞书/钉钉/企业微信/Telegram/ntfy/Server酱/Webhook），点击直达会话。布局交给 dsh 0.2.2 核心。",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -26,7 +26,7 @@
     "icon.svg"
   ],
   "engines": {
-    "dsh": ">=0.2.1-rc.2"
+    "dsh": ">=0.2.2-rc.1"
   },
   "dsh": {
     "bundle": {

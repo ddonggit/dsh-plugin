@@ -2,11 +2,10 @@
  * dsh-mobile client half: entry point and registration.
  *
  * The bundle is split into package-local chunks that the client module loader
- * fetches with `require.async('./client.<name>.js')` (the same mechanism
- * `@deepseek-ai/dsh-client-ui-sidebar-documentpreview` uses):
+ * fetches with `require.async('./client.<name>.js')` (the same package-local
+ * chunk mechanism other chunked clients use):
  *
- *   client.styles.js    presentation only: the mobile skin and settings styles
- *   client.sidebar.js   DOM contract: selectors, sidebar state, gestures
+ *   client.styles.js    presentation only: notification pill, settings and diagnostics
  *   client.deeplink.js  `#session=` / `?session=` routing
  *   client.notify.js    browser notifications, feed catch-up
  *   client.resource-compat.js  every resource provider under the `undefined` protocol key (Huawei browsers)
@@ -18,8 +17,7 @@
  *
  * Hooks used (all shipped client services):
  *   - ctx.locale      : notification copy, one namespace ("dsh-mobile")
- *   - ctx.slots       : the header menu button (conversation.header.leading) + settings.section
- *   - ctx.layout      : the official sidebar toggle
+ *   - ctx.slots       : the settings section and the notification overlay
  *   - ctx.sessions    : every session's `running` flag / readiness for deep links
  *   - ctx.uiSession   : pending interaction, for the "waiting for you" notice
  *   - ctx.uiWorkspace : open the session a notification or `?session=` points at
@@ -33,7 +31,6 @@ window.__ModuleLoader__.load({
 /** Package-local chunks, resolved against this bundle's own resource URL. */
 const CHUNK = {
   styles: './client.styles.js',
-  sidebar: './client.sidebar.js',
   deeplink: './client.deeplink.js',
   notify: './client.notify.js',
   resourceCompat: './client.resource-compat.js',
@@ -55,7 +52,7 @@ const chunkStatus = new Map();
  * Load one chunk, or report null when it cannot be fetched.
  *
  * Failure is contained on purpose: a broken settings chunk must not cost the
- * user the mobile layout, and a broken layout must not cost the notifications.
+ * notifications, and a broken notification chunk must not cost the deep links.
  */
 async function loadChunk(require, name) {
   try {
@@ -67,37 +64,6 @@ async function loadChunk(require, name) {
     console.error(`[dsh-mobile] chunk ${name} failed to load`, error);
     return null;
   }
-}
-
-/**
- * Critical CSS, injected synchronously before the first await.
- *
- * The full skin is one chunk away, and the client shell does not wait for it, so
- * a cold start on a phone would paint the desktop layout for a frame or three
- * (sidebar visible, then gone). These two rules close that window.
- *
- * The frame is not a child of #root: the renderer wraps the app in a
- * `div[data-slot="root"]` with `display: contents`, so the frame is that
- * element's child (measured in Chromium at 390x844 — the #root-relative form
- * matched nothing at all). Structural on purpose, no compressed class names.
- */
-const CRITICAL_CSS = `
-@media (max-width: 1024px) {
-  div[data-slot="root"] > div[style*="grid-template-columns"][data-sidebar-collapsed] {
-    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
-  }
-  div[data-slot="root"] > div[style*="grid-template-columns"][data-sidebar-collapsed] > div:first-child {
-    display: none !important;
-  }
-}
-`;
-
-function installCriticalStyles() {
-  const style = document.createElement('style');
-  style.setAttribute('data-plugin', 'dsh-mobile-critical');
-  style.textContent = CRITICAL_CSS;
-  document.head.appendChild(style);
-  return () => style.remove();
 }
 
 /** Notification copy, registered through the Client locale service. */
@@ -140,10 +106,8 @@ const MESSAGES = {
     sPermNo: 'Blocked',
     sSecureHint: 'Notifications require HTTPS. Open the HTTPS entry point to enable them.',
     sGo: 'Open HTTPS',
-    navHidden: 'Open sidebar',
-    navDrawer: 'Close sidebar',
     dTitle: 'Diagnostics',
-    dHint: 'Read-only. Copy the whole report when reporting a problem with previews, notifications or the sidebar.',
+    dHint: 'Read-only. Copy the whole report when reporting a problem with previews or notifications.',
     dOpen: 'Collect diagnostics',
     dRefresh: 'Re-run',
     dCopy: 'Copy',
@@ -199,8 +163,6 @@ const MESSAGES = {
     sPermNo: '已拒绝',
     sSecureHint: '通知需要 HTTPS 安全上下文，请从 HTTPS 入口打开后授权。',
     sGo: '打开 HTTPS',
-    navHidden: '打开侧栏',
-    navDrawer: '收起侧栏',
     dTitle: '诊断',
     dHint: '只读。反馈预览、通知、侧栏问题时，把整份报告复制出来。',
     dOpen: '生成诊断信息',
@@ -266,29 +228,12 @@ function settingsSection(t, api, platform) {
 }
 
 return {
-  inject: ['slots', 'layout', 'sessions', 'uiSession', 'uiWorkspace', 'locale'],
+  inject: ['slots', 'sessions', 'uiSession', 'uiWorkspace', 'locale'],
 
   apply(ctx) {
     ctx.effect(() => ctx.locale.register('dsh-mobile', 'en', MESSAGES.en));
     ctx.effect(() => ctx.locale.register('dsh-mobile', 'zh', MESSAGES.zh));
     const t = ctx.locale.bind('dsh-mobile');
-
-    // Synchronous, before any await: see CRITICAL_CSS. Dropped as soon as the
-    // real skin owns the layout — or when the sidebar chunk fails, so a broken
-    // chunk can never leave the sidebar hidden with no button on a phone.
-    let dropCritical = null;
-    ctx.effect(() => {
-      dropCritical = installCriticalStyles();
-      return () => {
-        if (dropCritical) dropCritical();
-        dropCritical = null;
-      };
-    });
-    const settleCritical = () => {
-      if (!dropCritical) return;
-      dropCritical();
-      dropCritical = null;
-    };
 
     // Chunks arrive asynchronously; every registration below checks this flag so
     // a plugin unloaded mid-flight stops installing instead of leaking effects.
@@ -297,23 +242,15 @@ return {
       live = false;
     });
 
-    // The header menu button's registration outcome, reported by the
-    // diagnostics page. Kept as a plain object so a slot that appears later (or
-    // never) is visible without turning the boot into a failure.
-    const menu = { slot: 'conversation.header.leading', registered: false, error: '' };
-
     const boot = async () => {
-      // Styles first: the mobile skin has to be in place before anything paints
-      // with the desktop column widths.
+      // Presentation first: the notification pill and the plugin's own pages
+      // are the only styles this plugin still owns. Core owns the layout.
       const styles = await loadChunk(require, 'styles');
       if (!live) return;
-      if (styles) {
-        styles.ensureViewportFit();
-        ctx.effect(styles.installStyles);
-      }
+      if (styles) ctx.effect(styles.installStyles);
 
       // The compat alias first: a preview restored from a saved tab subscribes
-      // as soon as the sidebar mounts. Inert on a normal URL parser.
+      // as soon as it mounts. Inert on a normal URL parser.
       const compat = await loadChunk(require, 'resourceCompat');
       if (!live) return;
       let compatApi = null;
@@ -327,7 +264,7 @@ return {
         }
       }
 
-      // Before the sidebar: it restores tabs, and a preview that subscribes
+      // Before the notification UI: it restores tabs, and a preview that subscribes
       // ahead of the recorder would be missing from the evidence.
       const forensics = await loadChunk(require, 'forensics');
       if (!live) return;
@@ -342,54 +279,11 @@ return {
         }
       }
 
-      const [sidebar, notify, deeplink] = await Promise.all([
-        loadChunk(require, 'sidebar'),
+      const [notify, deeplink] = await Promise.all([
         loadChunk(require, 'notify'),
         loadChunk(require, 'deeplink'),
       ]);
       if (!live) return;
-
-      let sidebarInstance = null;
-      if (sidebar) {
-        // `finally`: if installing the sidebar throws, the critical CSS must not
-        // stay behind hiding the sidebar with no button to bring it back.
-        try {
-          const instance = sidebar.installSidebar(ctx);
-          sidebarInstance = instance;
-          ctx.effect(() => () => instance.dispose());
-          // The entry point into the mobile sidebar: the first item of the
-          // conversation header's leading seat. Registered through the official
-          // slot, never by injecting into the header DOM; a missing slot only
-          // costs this button, never the rest of the plugin.
-          const registerMenu = () => {
-            try {
-              const dispose = ctx.slots.register(
-                { name: 'conversation.header.leading', id: 'dsh-mobile-menu' },
-                sidebar.makeMenuButton(t, instance),
-              );
-              menu.registered = true;
-              menu.error = '';
-              return dispose;
-            } catch (error) {
-              menu.registered = false;
-              menu.error = String(error?.message ?? error);
-              console.warn('[dsh-mobile] header menu button could not register', error);
-              return () => {};
-            }
-          };
-          try {
-            ctx.slots.inject('conversation.header.leading', registerMenu);
-          } catch (error) {
-            menu.registered = false;
-            menu.error = String(error?.message ?? error);
-            console.warn('[dsh-mobile] conversation.header.leading is not available', error);
-          }
-        } finally {
-          settleCritical();
-        }
-      } else {
-        settleCritical();
-      }
 
       const api = notify?.api ?? null;
       if (deeplink) {
@@ -401,13 +295,11 @@ return {
       if (!NOTIFICATIONS_ENABLED || !api) return;
 
       // What the settings page (and its diagnostics chunk) may read: the live
-      // context, the chunk table, the sidebar state machine and the two lazy
+      // context, the chunk table, the two optional recorders and the lazy
       // loaders. Chunks never reach into the entry themselves.
       const platform = {
         ctx,
         chunkStatus,
-        sidebar: sidebarInstance,
-        menu,
         forensics: forensicsApi,
         resourceCompat: compatApi,
         loadSettings: () => loadChunk(require, 'settings'),

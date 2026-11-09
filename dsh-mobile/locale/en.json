@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "DSH Mobile",
-    "description": "Mobile layout for the Web GUI (drawer sidebar, fullscreen panels, safe areas, touch targets) with completion and pending-interaction notifications, delivered either in the browser or from the host to chat channels."
+    "description": "Completion, failure and pending-interaction notifications: browser notifications (HTTPS required) or host-side delivery to Feishu, DingTalk, WeCom, Telegram, ntfy, ServerChan or a webhook, with a link back to the session. Mobile layout is owned by DSH 0.2.2 core."
   }
 }
