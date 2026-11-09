@@ -1,0 +1,9 @@
+{
+  "panel": "Design",
+  "settings": "Penpot",
+  "start": "Start Penpot",
+  "stop": "Stop",
+  "restart": "Restart",
+  "status": "Status",
+  "logs": "Logs"
+}

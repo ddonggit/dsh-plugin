@@ -1,0 +1,25 @@
+# entry id == package.json name == client.js load().id
+- insert:
+    - id: dsh-penpot
+      name: dsh-penpot
+      config:
+        autoStart: true
+        penpotVersion: '2.18.6'
+        frontendPort: 3300
+        mcpPort: 4401
+
+    # The MCP bridge is a separate DSH plugin row. It retries while Penpot is
+    # stopped, so DSH boot never depends on the Docker stack being ready.
+    - id: penpot-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: penpot
+        transport: streamable-http
+        url: 'http://127.0.0.1:4401/mcp'
+        toolCallTimeoutMs: 120000
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 1000
+          maxDelayMs: 30000
+          maxAttempts: 60

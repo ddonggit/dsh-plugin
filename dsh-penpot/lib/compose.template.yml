@@ -1,0 +1,167 @@
+name: dsh-penpot
+
+x-flags: &penpot-flags
+  PENPOT_FLAGS: ${PENPOT_FLAGS}
+
+x-public-uri: &penpot-public-uri
+  PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI}
+
+x-body-size: &penpot-body-size
+  PENPOT_HTTP_SERVER_MAX_BODY_SIZE: "367001600"
+  PENPOT_HTTP_SERVER_MAX_MULTIPART_BODY_SIZE: "367001600"
+
+x-secret-key: &penpot-secret-key
+  PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY}
+
+x-database: &penpot-database
+  PENPOT_DATABASE_URI: postgresql://penpot-postgres/penpot
+  PENPOT_DATABASE_USERNAME: penpot
+  PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  penpot:
+
+volumes:
+  penpot_postgres_v15:
+  penpot_assets:
+
+services:
+  penpot-frontend:
+    image: "penpotapp/frontend:{{VERSION}}"
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:{{FRONTEND_PORT}}:8080"
+    volumes:
+      - penpot_assets:/opt/data/assets
+    depends_on:
+      - penpot-backend
+      - penpot-mcp
+      - penpot-exporter
+    networks:
+      - penpot
+    environment:
+      <<: [*penpot-flags, *penpot-body-size, *penpot-public-uri]
+      PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
+      PENPOT_TELEMETRY_ENABLED: "false"
+    mem_limit: 256m
+    logging: *default-logging
+
+  penpot-backend:
+    image: "penpotapp/backend:{{VERSION}}"
+    restart: unless-stopped
+    volumes:
+      - penpot_assets:/opt/data/assets
+    depends_on:
+      penpot-postgres:
+        condition: service_healthy
+      penpot-valkey:
+        condition: service_healthy
+    networks:
+      - penpot
+    environment:
+      <<: [*penpot-flags, *penpot-public-uri, *penpot-body-size, *penpot-secret-key, *penpot-database]
+      PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
+      PENPOT_REDIS_URI: redis://penpot-valkey/0
+      PENPOT_OBJECTS_STORAGE_BACKEND: fs
+      PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: /opt/data/assets
+      PENPOT_TELEMETRY_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx1536m"
+    mem_limit: 2g
+    logging: *default-logging
+
+  penpot-exporter:
+    image: "penpotapp/exporter:{{VERSION}}"
+    restart: unless-stopped
+    depends_on:
+      penpot-valkey:
+        condition: service_healthy
+    networks:
+      - penpot
+    environment:
+      <<: [*penpot-flags, *penpot-secret-key, *penpot-public-uri]
+      PENPOT_INTERNAL_URI: http://penpot-frontend:8080
+      PENPOT_REDIS_URI: redis://penpot-valkey/0
+      PENPOT_TELEMETRY_ENABLED: "false"
+      PENPOT_EXPORTER_MAX_CONCURRENT_JOBS: "1"
+    mem_limit: 768m
+    logging: *default-logging
+
+  penpot-mcp:
+    image: "penpotapp/mcp:{{VERSION}}"
+    restart: unless-stopped
+    command: ["node", "index.js"]
+    ports:
+      - "127.0.0.1:{{MCP_PORT}}:4401"
+    networks:
+      - penpot
+    environment:
+      PENPOT_MCP_SERVER_HOST: 0.0.0.0
+    volumes:
+      - type: bind
+        source: '{{ASSET_INBOX}}'
+        target: /imports
+        read_only: true
+    mem_limit: 512m
+    logging: *default-logging
+
+  penpot-admin-console:
+    image: "penpotapp/admin-console:{{VERSION}}"
+    # 管理台把 /admin-console/ 写死在构建产物里，放在 /penpot/ 子路径下无法访问；
+    # 只有显式开启 enable-admin-console 时才需要，默认不启动，避免无限重启。
+    profiles: ["admin-console"]
+    restart: unless-stopped
+    depends_on:
+      penpot-postgres:
+        condition: service_healthy
+    networks:
+      - penpot
+    environment:
+      <<: [*penpot-public-uri, *penpot-secret-key, *penpot-database]
+      PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000/admin-console/
+      PENPOT_INTERNAL_URI: http://penpot-frontend:8080
+    mem_limit: 256m
+    logging: *default-logging
+
+  penpot-postgres:
+    image: "postgres:15"
+    restart: unless-stopped
+    stop_signal: SIGINT
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U penpot"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+      start_period: 2s
+    volumes:
+      - penpot_postgres_v15:/var/lib/postgresql/data
+    networks:
+      - penpot
+    environment:
+      POSTGRES_INITDB_ARGS: --data-checksums
+      POSTGRES_DB: penpot
+      POSTGRES_USER: penpot
+      POSTGRES_PASSWORD: ${PENPOT_DATABASE_PASSWORD}
+    mem_limit: 512m
+    logging: *default-logging
+
+  penpot-valkey:
+    image: "valkey/valkey:8.1"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep PONG"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    networks:
+      - penpot
+    environment:
+      VALKEY_EXTRA_FLAGS: --maxmemory 128mb --maxmemory-policy volatile-lfu
+    mem_limit: 256m
+    logging: *default-logging

@@ -1,0 +1,9 @@
+{
+  "panel": "设计",
+  "settings": "Penpot",
+  "start": "启动 Penpot",
+  "stop": "停止",
+  "restart": "重启",
+  "status": "状态",
+  "logs": "日志"
+}

@@ -1,0 +1,39 @@
+{
+  "name": "dsh-penpot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "在 DSH 里安装、启动并操作 Penpot：独立端口 3300、管理面板、MCP 与可编辑海报技能。",
+  "main": "./index.js",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/**",
+    "skills/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ]
+}
