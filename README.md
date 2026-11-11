@@ -13,7 +13,7 @@
 | [`dsh-https`](dsh-https) | `dsh-https` | 0.3.1 | 独立 HTTPS 入口 + 可选登录鉴权闸门：TLS 终止、透明反向代理、本地 CA / ACME（腾讯云 DNSPod DNS-01）自动证书；开鉴权后 `/plugins/*`、`/api/*`、WebSocket 与插件自有路由（如 `/__bili/*`）都要先登录 |
 | [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.8.0 | 任务完成/等待确认通知（浏览器通知与宿主端多通道推送）；移动布局交给 DSH 0.2.2 核心 |
 | [`dsh-penpot`](dsh-penpot) | `dsh-penpot` | 0.1.0 | 本机 Penpot 管理 + MCP：独立端口 3300，用户手动登录，AI 生成可编辑海报与印刷稿；支持 Linux/macOS/Windows（DSH Desktop + Docker Desktop） |
-| [`dsh-progress`](dsh-progress) | `dsh-progress` | 0.3.0 | 让模型主动汇报进展：连续不汇报先软提醒、再拦下一次工具调用；双模式方向纠偏 + 工具提示（不调用 LLM）；纯状态消息不打扰；对话内进展卡片 + 状态条；跨工作区「进行中 / 待确认 / 刚完成」会话总览（已并入原 dsh-running-sessions） |
+| [`dsh-progress`](dsh-progress) | `dsh-progress` | 0.3.1 | 让模型主动汇报进展：连续不汇报先软提醒、再拦下一次工具调用；双模式方向纠偏 + 工具提示（不调用 LLM）；纯状态消息不打扰；对话内进展卡片 + 状态条；跨工作区「进行中 / 待确认 / 刚完成」会话总览（已并入原 dsh-running-sessions） |
 | [`dsh-restart`](dsh-restart) | `dsh-restart` | 1.2.0 | 受控重启 dsh web：自动识别 systemd 单元 / 无 systemd 直接重启，HTTPS/具体网卡探测，阶段化进度与失败现场 |
 | [`dsh-usage-query`](dsh-usage-query) | `dsh-usage-query` | 0.3.1 | 设置页「用量查询」：DeepSeek 余额、OpenCode Go 配额、OpenDesign 余额与积分 |
 

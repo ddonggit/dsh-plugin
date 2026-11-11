@@ -1,6 +1,6 @@
 {
   "name": "dsh-progress",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "让模型主动汇报进展、偏离目标时提醒/拉回；并在同一套界面里汇总跨工作区的运行中、等待确认、刚完成会话。",
   "main": "lib/index.js",

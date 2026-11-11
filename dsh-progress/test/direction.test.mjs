@@ -76,8 +76,13 @@ function makeCtx(env = {}) {
     },
     get(name) {
       if (name === 'goals') return { get: () => env.goal ?? null }
-      if (name === 'sessionProjections') return { snapshot: () => ({ values: { todos: env.todos ?? null } }) }
-      if (name === 'planMode') return { get: () => ({ active: env.planMode === true }) }
+      if (name === 'sessionProjections') return {
+        snapshot: () => ({ values: { todos: env.todos ?? null, plan: env.planView ?? null } }),
+      }
+      if (name === 'planMode') {
+        if (env.planModeService === false) return undefined
+        return { get: () => ({ active: env.planMode === true }) }
+      }
       return undefined
     },
   }
@@ -443,6 +448,44 @@ test('plan mode 下收工不拉回', async () => {
 
   await env.stopping()
   assert.equal(agent.steered.length, 0)
+})
+
+test('planMode 服务不可见时，用 plan 投影判断计划模式，收工不拉回', async () => {
+  const agent = makeAgent({ request: '帮我做个好看的待办应用' })
+  const env = boot({
+    agent,
+    env: { planModeService: false, planView: { active: true, pending: false } },
+  })
+  await env.post(makeExec(agent))
+  await report(env, { phase: 'working', summary: '继续', next: '写方案' })
+
+  await env.stopping()
+  assert.equal(agent.steered.length, 0)
+})
+
+test('工具主动结束回合（exit_plan_mode 被要求修改）后，收工不再拉回', async () => {
+  const agent = makeAgent({ request: '帮我做个好看的待办应用' })
+  const env = boot({ agent })
+  await env.post(makeExec(agent))
+  await report(env, { phase: 'working', summary: '继续', next: '写方案' })
+  await env.post(
+    makeExec(agent, { name: 'exit_plan_mode', arguments: { plan: '# 方案\n\n先做一件事。' } }),
+    { isError: false, concludesTurn: true },
+  )
+
+  await env.stopping()
+  assert.equal(agent.steered.length, 0)
+})
+
+test('普通工具调用结束后，写下的计划没做收工仍会拉回（回归）', async () => {
+  const agent = makeAgent({ request: '帮我做个好看的待办应用' })
+  const env = boot({ agent })
+  await env.post(makeExec(agent))
+  await report(env, { phase: 'working', summary: '继续', next: '写方案' })
+
+  await env.stopping()
+  assert.equal(agent.steered.length, 1)
+  assert.equal(agent.steered[0].source.kind, '方向纠偏')
 })
 
 test('direction: false 时不注册收工监听，也不做方向核对', async () => {

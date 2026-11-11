@@ -238,6 +238,7 @@ export function apply(ctx, input) {
         scopeEscapes: 0,
         scopeNotified: false,
         scopeCorrected: false,
+        turnConcluded: false,
       }
       states.set(sessionId, state)
     }
@@ -352,9 +353,23 @@ export function apply(ctx, input) {
     }
   }
 
+  /**
+   * 这个会话是否在 plan mode。
+   *
+   * 先问 planMode 服务；但 web profile 的 agent preset 会把 planMode 隔离到
+   * preset 子作用域里，根级插件用 ctx.get('planMode') 可能拿不到（本机实测
+   * 根级 plan-mode 是 inactive）。所以再读一次共享的 `plan` 投影：它由真正
+   * 在跑的那个 plan-mode 实例注册，客户端也靠它显示模式，根级插件读得到。
+   */
   const planModeActive = (agent) => {
     try {
-      return ctx.get?.('planMode')?.get?.(agent)?.active === true
+      if (ctx.get?.('planMode')?.get?.(agent)?.active === true) return true
+    } catch {
+      // 服务没注册或还没就绪：继续看投影。
+    }
+    try {
+      const plan = ctx.get?.('sessionProjections')?.snapshot?.(agent?.session, ['plan'])?.values?.plan
+      return plan?.active === true
     } catch {
       return false
     }
@@ -530,6 +545,9 @@ export function apply(ctx, input) {
     state.sinceReport += 1
     state.callsSinceWrite += 1
     if (result?.isError === true) state.failuresSinceReport += 1
+    // 工具主动结束了回合（例如 exit_plan_mode 被用户“要求修改”后退回输入框）：
+    // 这是有意的收工，不是忘了汇报，收工时不要把它拉回来。
+    if (result?.concludesTurn === true) state.turnConcluded = true
 
     const anchor = ensureAnchor(agent, state)
     const directionActive = config.direction && anchor !== null && anchor.statusOnly !== true
@@ -611,7 +629,7 @@ export function apply(ctx, input) {
       const sessionId = agent.session?.id
       if (sessionId === undefined) return
       const state = states.get(sessionId)
-      if (state === undefined || state.turnStopSteered) return
+      if (state === undefined || state.turnStopSteered || state.turnConcluded) return
 
       const report = state.lastReport
       if (report?.phase === 'blocked') return

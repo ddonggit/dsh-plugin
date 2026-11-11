@@ -4,7 +4,7 @@
 
 `dsh-progress` 是 DSH（DeepSeek Harness）Web 的 bundle 插件，做三件事：**让模型主动汇报进展**、**在方向跑偏时提醒/拉回**、**在工具用法明显绕远时给一条提示**；0.3.0 起还合并了原来的 `dsh-running-sessions`，在侧栏/标题栏汇总跨工作区的运行中、等待确认、刚完成会话。连续 N 次工具调用没汇报就软提醒，超过硬上限就拦下一次工具调用；方向类只提醒/`agent.steer`，绝不 `deny`；全程不调用任何 LLM。
 
-当前版本 0.3.0，`node --test` 55 条用例。
+当前版本 0.3.1，`node --test` 58 条用例。
 
 ### 0. 按 DSH 插件规范工作
 
@@ -57,7 +57,7 @@
 
 - **进展计数**：`sinceReport`、`failuresSinceReport`、`nudged`。`report_progress` 成功 → 前三个清零；`tools/post-execute` 正常完成一次被跟踪的调用 → `sinceReport += 1`，`isError` 时 `failuresSinceReport += 1`。
 - **方向锚点/预算**：`anchor`、`alignmentShown`、`notices`、`corrections`、`turnStopSteered`。`notice` 只在工具提示里计数（每回合最多 3 条）；`corrections` 统计所有 steer（每回合最多 `maxCorrections`）。
-- **活动事实**：`lastReport`、`toolCalls`、`callsSinceWrite`、`hasWritten`、`lastWriteSeq`、`lastVerificationSeq`、`doneUnverified`、`noWriteNotified`、`noWriteReports`、`noWriteCorrected`、`scopeEscapes`、`scopeNotified`、`scopeCorrected`。
+- **活动事实**：`lastReport`、`toolCalls`、`callsSinceWrite`、`hasWritten`、`lastWriteSeq`、`lastVerificationSeq`、`doneUnverified`、`noWriteNotified`、`noWriteReports`、`noWriteCorrected`、`scopeEscapes`、`scopeNotified`、`scopeCorrected`、`turnConcluded`。
 
 生命周期：
 
@@ -80,7 +80,7 @@
 1. `await next()`；无会话 id 直接返回。
 2. 如果 `exec.name === 'report_progress'` → `handleReportPost()`，**在 `tracked()` 之前处理**（`tracked()` 会排除本工具）。
 3. 否则 `tracked()` 过滤；`deniedCallIds.delete(callId)` 为真 → 直接返回（**被自己拦下的调用也会经过 post-execute，不跳过就会把一次拦截记成一次失败**）。
-4. `toolCalls/sinceReport/callsSinceWrite += 1`；`isError` 时 `failuresSinceReport += 1`。
+4. `toolCalls/sinceReport/callsSinceWrite += 1`；`isError` 时 `failuresSinceReport += 1`；`result.concludesTurn === true` 时置 `turnConcluded = true`（工具主动结束回合，收工不再拉回）。
 5. `ensureAnchor()`；模糊模式且无计划、未对齐过、且不是纯状态消息 → 追加一次 `方向核对`。
 6. 写工具成功 → 更新 `hasWritten/lastWriteSeq/callsSinceWrite/doneUnverified`，做范围检查；验证命令成功 → 更新 `lastVerificationSeq/doneUnverified`。
 7. `bashWrapperTip()` 命中 → 追加 `工具提示`（受 `coach` 和每回合 3 条限制）。
@@ -117,7 +117,8 @@
 收工监听 `agent/turn-stopping`：
 
 - 仅在 `direction: true` 且 `enforce: true` 时注册。
-- 跳过 `signal.aborted`、子 agent（`subagents: false`）、plan mode。
+- 跳过 `signal.aborted`、子 agent（`subagents: false`）、plan mode、`turnConcluded`（工具主动结束回合，例如 `exit_plan_mode` 被用户点“要求修改”）。
+- plan mode 判定：先 `ctx.get('planMode')?.get(agent)?.active === true`；web profile 的 agent preset 会用 `isolate: { planMode: true }` 隔离该服务，根级插件读不到，这时改读共享的 `plan` 投影 `ctx.get('sessionProjections')?.snapshot(session, ['plan'])?.values?.plan?.active === true`。两处都读不到才按普通回合处理。**不要删掉投影兜底**，本机根级 plan-mode 实测是 inactive。
 - 每回合最多一次收工 steer（`turnStopSteered`）；总 steer 仍受 `maxCorrections` 限制。
 - 已经报 `done` 且 `doneUnverified === false`、或报 `blocked`，不再拉回。
 
@@ -207,13 +208,13 @@
 ## 5. 测试
 
 ```bash
-npm test          # node --test，当前 55 条
+npm test          # node --test，当前 58 条
 node --check lib/index.js lib/text.js lib/anchor.js lib/signals.js lib/messages.js lib/client.js
 ```
 
 - 测试必须离线：假 `ctx`、假 React、vm 跑真实 `client.js`，不连真实 DSH。
 - 宿主测试覆盖：软提醒恰好一次、硬拦一次、被拦调用不计失败、ask 也要过预算、`exempt`/子会话/PTC 不计数、会话销毁清理、`enforce: false` 不拦。
-- 方向测试覆盖：清晰/模糊分类、路径提取与范围、bash 包装、收工原因；纯状态/确认消息识别与“不提醒”行为；模糊对齐、只读不写、越界、完成未验证、goal 未收口、自己计划、无计划轻核对、问句跳过；子 agent/PTC/plan mode/`direction: false`；配置报错；不访问 `systemPrompt`/`llm`。
+- 方向测试覆盖：清晰/模糊分类、路径提取与范围、bash 包装、收工原因；纯状态/确认消息识别与“不提醒”行为；模糊对齐、只读不写、越界、完成未验证、goal 未收口、自己计划、无计划轻核对、问句跳过；子 agent/PTC/plan mode（服务不可见时读投影）/`concludesTurn` 收工不拉回/普通回合仍拉回/`direction: false`；配置报错；不访问 `systemPrompt`/`llm`。
 - 客户端测试覆盖：五个槽位（且没有 `settings.section`）、卡片三态、`call: null` 不算失败、无 `sessionId` prop 时靠快照兜底、状态条在运行中/空闲/无其他会话时的分支、计数片与整页列表的过滤/排序/进展副标题、入口开关的锁定逻辑、缺时间戳/未来时间戳/工作区计数回归、`.dpg-strip` 的宽度/居中 CSS 回归。
 - 不为通过而放宽断言或删用例；实现错了改实现。
 - 视觉改动没有自动化像素测试：用无头浏览器量一下真实宽高（playwright + 抓取插件 CSS 拼页面），并在汇报里写「已测量」或「仅人工验证」。
@@ -227,7 +228,7 @@ node --check lib/index.js lib/text.js lib/anchor.js lib/signals.js lib/messages.
 3. 选对层：计数/拦截/文案/方向规则进 `lib/index.js` 或 `lib/*.js`；卡片/状态条/样式进 `lib/client.js`。
 4. 补测试：行为变化必须有断言，断言具体状态、文案、调用次数，不只断言「没抛异常」。
 5. 更新文档：`README.md` 的「用户看到什么」「模型怎么被管住」「已知边界」和 `## 变更记录`；用户可见变化升 `package.json` 版本，并同步根仓库 `README.md` 的插件表。
-6. 跑 `npm test`，确认 55 条全过；再跑 `node --check`。
+6. 跑 `npm test`，确认 58 条全过；再跑 `node --check`。
 7. 提交：只 `git add dsh-progress/...`，在父仓库 `/opt/dsh-plugins` 提交；中文 Conventional Commits（如 `feat: 增加双模式方向纠偏`）。默认不 push，用户明确要求时才推送；不 force push、不改写历史。
 
 ---
