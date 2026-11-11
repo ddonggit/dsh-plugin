@@ -1,0 +1,13 @@
+# dsh-compact-memory：压缩前保存工作交接卡，压缩后自动回注。
+# 默认 boundary = 与原生压缩同阈值（本机约 57.1%），只在回合结束、agent 空闲时执行；
+# 绝不比原生更早。想完全不干预时机，把 mode 改成 native。
+- insert:
+    - id: dsh-compact-memory
+      name: dsh-compact-memory
+      config:
+        autoCompact:
+          mode: boundary
+          # 1.0 = 与原生同阈值；<1 才会更早（early 模式）
+          triggerAtNativeRatio: 1.0
+        # 卡片硬上限（字符）；超出按优先级裁剪
+        maxCardChars: 6000

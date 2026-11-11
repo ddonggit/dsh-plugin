@@ -1,0 +1,33 @@
+{
+  "name": "dsh-compact-memory",
+  "version": "0.1.0",
+  "description": "压缩接力：dsh 会话压缩前保存工作交接卡，压缩后自动回注，避免长会话丢经验。",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "docs/**"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check lib/index.js && node --check lib/config.js && node --check lib/card.js && node --check lib/store.js && node --check lib/snapshot.js && node --check lib/inject.js && node --check lib/scheduler.js && node --check lib/tools.js && node --check lib/command.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Compaction Handoff Memory",
+    "description": "Saves goals, decisions, constraints, pitfalls, progress, and next steps into a handoff card before compaction, then automatically re-injects it after compaction. Native compaction thresholds are unchanged by default."
+  }
+}
