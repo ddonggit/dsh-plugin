@@ -10,6 +10,7 @@
 
 | 目录 | 包名 | 版本 | 作用 |
 |---|---|---|---|
+| [`dsh-compact-memory`](dsh-compact-memory) | `dsh-compact-memory` | 0.1.0 | 压缩前把目标/决定/约束/坑/进度/下一步/关键文件与目录保存成工作交接卡，压缩成功后自动回注对话；可选在回合边界发起压缩，默认不早于原生阈值 |
 | [`dsh-https`](dsh-https) | `dsh-https` | 0.3.1 | 独立 HTTPS 入口 + 可选登录鉴权闸门：TLS 终止、透明反向代理、本地 CA / ACME（腾讯云 DNSPod DNS-01）自动证书；开鉴权后 `/plugins/*`、`/api/*`、WebSocket 与插件自有路由（如 `/__bili/*`）都要先登录 |
 | [`dsh-mobile`](dsh-mobile) | `dsh-mobile` | 0.8.0 | 任务完成/等待确认通知（浏览器通知与宿主端多通道推送）；移动布局交给 DSH 0.2.2 核心 |
 | [`dsh-penpot`](dsh-penpot) | `dsh-penpot` | 0.1.0 | 本机 Penpot 管理 + MCP：独立端口 3300，用户手动登录，AI 生成可编辑海报与印刷稿；支持 Linux/macOS/Windows（DSH Desktop + Docker Desktop） |
